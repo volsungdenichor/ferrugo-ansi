@@ -35,7 +35,7 @@ struct area_t
 
         std::size_t to_index(location_t loc) const
         {
-            if (((0 <= loc[0] < m_extent[0]) && (0 <= loc[1] < m_extent[1])))
+            if ((0 <= loc[0] && loc[0] < m_extent[0]) && (0 <= loc[1] && loc[1] < m_extent[1]))
             {
                 return m_extent[0] * loc[1] + loc[0];
             }
@@ -59,7 +59,7 @@ struct area_t
 
         std::size_t to_index(location_t loc) const
         {
-            if (((0 <= loc[0] < m_extent[0]) && (0 <= loc[1] < m_extent[1])))
+            if ((0 <= loc[0] && loc[0] < m_extent[0]) && (0 <= loc[1] && loc[1] < m_extent[1]))
             {
                 return m_extent[0] * loc[1] + loc[0];
             }
