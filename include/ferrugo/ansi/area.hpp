@@ -182,16 +182,19 @@ struct buffer_t
     void write_color(ground_type_t type, const color_t& col)
     {
         const args_t args = std::visit(
-            ferrugo::core::overloaded{ [&](const true_color_t& c) -> args_t {
-                                          return { type == ground_type_t::foreground ? 38 : 48, 2, c.red, c.green, c.blue };
-                                      },
+            ferrugo::core::overloaded{ //
+                                       [&](const true_color_t& c) -> args_t {
+                                           return { type == ground_type_t::foreground ? 38 : 48, 2, c.red, c.green, c.blue };
+                                       },
                                        [&](const palette_color_t& c) -> args_t {
                                            return { type == ground_type_t::foreground ? 38 : 48, 5, c.index };
                                        },
-                                       [&](const default_color_t& c) -> args_t
-                                       { return { type == ground_type_t::foreground ? 39 : 49 }; },
-                                       [&](const basic_color_t& c) -> args_t
-                                       { return { static_cast<int>(c) + (type == ground_type_t::foreground ? 30 : 40) }; } },
+                                       [&](const default_color_t& c) -> args_t {  //
+                                           return { type == ground_type_t::foreground ? 39 : 49 };
+                                       },
+                                       [&](const basic_color_t& c) -> args_t {  //
+                                           return { static_cast<int>(c) + (type == ground_type_t::foreground ? 30 : 40) };
+                                       } },
             col);
         escape(args);
     }
@@ -206,23 +209,31 @@ inline void output(const area_t::ref_type& area_t, buffer_t& buf)
 {
     for (int y = 0; y < area_t.m_extent[1]; ++y)
     {
+        if (y != 0)
+        {
+            buf.new_line();
+        }
         for (int x = 0; x < area_t.m_extent[0]; ++x)
         {
             const glyph_t& g = area_t[location_t{ x, y }];
             buf.set_style(g.style).write(g.character);
         }
-        buf.new_line();
     }
     buf.reset();
 }
 
-std::string render(const area_t& area)
+inline std::string render(const area_t& area)
 {
     std::stringstream ss;
-    ss << "\033[2J\033[;H";
+    // ss << "\033[2J\033[;H";
     buffer_t buffer{ ss };
     output(area.ref(), buffer);
     return ss.str();
+}
+
+inline std::ostream& operator<<(std::ostream& os, const area_t& area)
+{
+    return os << render(area);
 }
 
 }  // namespace ansi

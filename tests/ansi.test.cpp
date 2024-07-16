@@ -1,7 +1,7 @@
 #include <ferrugo/ansi/ansi.hpp>
 
 template <class... Args>
-std::string format(ferrugo::ansi::glyph_style_t style, Args&&... args)
+ferrugo::ansi::area_t format(ferrugo::ansi::glyph_style_t style, Args&&... args)
 {
     std::stringstream ss;
     (ss << ... << args);
@@ -13,7 +13,7 @@ std::string format(ferrugo::ansi::glyph_style_t style, Args&&... args)
         cell.character = content[i];
         cell.style = style;
     }
-    return ferrugo::ansi::render(area);
+    return area;
 }
 
 int main()
@@ -22,7 +22,7 @@ int main()
     ansi::area_t area{ { 10, 5 } };
     const auto ch = ansi::multibyte_string{ "▞" }[0];
     area.mut_ref().fill(ansi::glyph_t{ ch | ansi::fg(ansi::basic_color_t::red) });
-    std::cout << ansi::render(area) << std::flush;
+    std::cout << area << std::endl;
     std::cout << format(ansi::fg(ansi::basic_color_t::red) | ansi::bg(ansi::basic_color_t::yellow), "Ala ma kota")
               << std::endl;
 }
