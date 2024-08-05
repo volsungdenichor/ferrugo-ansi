@@ -282,5 +282,14 @@ inline glyph_style_applier_t bg(const color_t& col)
     return glyph_style_applier_t{ [=](glyph_style_t& s) { s.background = col; } };
 }
 
+inline glyph_style_applier_t color(const color_t& fg, const color_t& bg = default_color_t{})
+{
+    return glyph_style_applier_t{ [=](glyph_style_t& s)
+                                  {
+                                      s.foreground = fg;
+                                      s.background = bg;
+                                  } };
+}
+
 }  // namespace ansi
 }  // namespace ferrugo
