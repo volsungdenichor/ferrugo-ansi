@@ -215,6 +215,10 @@ struct color_t
     {
     }
 
+    color_t(std::string_view txt) : m_data{ true_color_t{ txt } }
+    {
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const color_t& item)
     {
         os << "(color ";
@@ -250,25 +254,26 @@ enum class ground_type_t
     background
 };
 
+template <ground_type_t GroundType>
 struct color_specifier_t
 {
-    ground_type_t ground_type;
     color_t color;
 };
 
-inline auto fg(color_t col) -> color_specifier_t
+inline auto fg(color_t col) -> color_specifier_t<ground_type_t::foreground>
 {
-    return color_specifier_t{ ground_type_t::foreground, std::move(col) };
+    return { std::move(col) };
 }
 
-inline auto bg(color_t col) -> color_specifier_t
+inline auto bg(color_t col) -> color_specifier_t<ground_type_t::background>
 {
-    return color_specifier_t{ ground_type_t::background, std::move(col) };
+    return { std::move(col) };
 }
 
 using args_t = std::vector<int>;
 
-inline auto to_args(const color_specifier_t& color_specifier) -> args_t
+template <ground_type_t GroundType>
+auto to_args(const color_specifier_t<GroundType>& color_specifier) -> args_t
 {
     struct visitor
     {
@@ -299,7 +304,7 @@ inline auto to_args(const color_specifier_t& color_specifier) -> args_t
             return { m_ground == ground_type_t::foreground ? 38 : 48, 2, col[0], col[1], col[2] };
         }
     };
-    return std::visit(visitor{ color_specifier.ground_type }, color_specifier.color.m_data);
+    return std::visit(visitor{ GroundType }, color_specifier.color.m_data);
 }
 
 inline auto esc(const args_t& args) -> std::string
@@ -318,7 +323,8 @@ inline auto esc(const args_t& args) -> std::string
     return ss.str();
 }
 
-inline std::ostream& operator<<(std::ostream& os, const color_specifier_t& item)
+template <ground_type_t GroundType>
+inline std::ostream& operator<<(std::ostream& os, const color_specifier_t<GroundType>& item)
 {
     return os << esc(to_args(item));
 }
