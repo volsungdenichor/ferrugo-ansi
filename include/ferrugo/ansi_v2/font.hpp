@@ -22,42 +22,42 @@ struct font
     {
     }
 
-    friend bool operator==(font lhs, const font rhs)
+    friend bool operator==(const font lhs, const font rhs)
     {
         return lhs.m_value == rhs.m_value;
     }
 
-    friend bool operator<(font lhs, const font rhs)
+    friend bool operator<(const font lhs, const font rhs)
     {
         return lhs.m_value < rhs.m_value;
     }
 
-    friend bool operator!=(font lhs, const font rhs)
+    friend bool operator!=(const font lhs, const font rhs)
     {
         return !(lhs == rhs);
     }
 
-    friend bool operator>(font lhs, const font rhs)
+    friend bool operator>(const font lhs, const font rhs)
     {
         return rhs < lhs;
     }
 
-    friend bool operator<=(font lhs, const font rhs)
+    friend bool operator<=(const font lhs, const font rhs)
     {
         return !(lhs > rhs);
     }
 
-    friend bool operator>=(font lhs, const font rhs)
+    friend bool operator>=(const font lhs, const font rhs)
     {
         return !(lhs < rhs);
     }
 
-    friend font operator&(font lhs, const font rhs)
+    friend font operator&(const font lhs, const font rhs)
     {
         return font(lhs.m_value & rhs.m_value);
     }
 
-    friend font operator|(font lhs, const font rhs)
+    friend font operator|(const font lhs, const font rhs)
     {
         return font(lhs.m_value | rhs.m_value);
     }

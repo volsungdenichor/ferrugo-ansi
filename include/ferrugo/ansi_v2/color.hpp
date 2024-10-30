@@ -219,6 +219,10 @@ struct color_t
     {
     }
 
+    color_t(const char* txt) : color_t(std::string_view(txt))
+    {
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const color_t& item)
     {
         os << "(color ";
@@ -260,15 +264,17 @@ struct color_specifier_t
     color_t color;
 };
 
-inline auto fg(color_t col) -> color_specifier_t<ground_type_t::foreground>
+template <ground_type_t GroundType>
+struct color_specifier_builder_fn
 {
-    return { std::move(col) };
-}
+    constexpr auto operator()(color_t col) const -> color_specifier_t<GroundType>
+    {
+        return { std::move(col) };
+    }
+};
 
-inline auto bg(color_t col) -> color_specifier_t<ground_type_t::background>
-{
-    return { std::move(col) };
-}
+static constexpr inline auto fg = color_specifier_builder_fn<ground_type_t::foreground>{};
+static constexpr inline auto bg = color_specifier_builder_fn<ground_type_t::background>{};
 
 using args_t = std::vector<int>;
 
@@ -310,6 +316,7 @@ auto to_args(const color_specifier_t<GroundType>& color_specifier) -> args_t
 inline auto esc(const args_t& args) -> std::string
 {
     std::stringstream ss;
+#if 1
     ss << "\033[";
     for (std::size_t i = 0; i < args.size(); ++i)
     {
@@ -320,11 +327,20 @@ inline auto esc(const args_t& args) -> std::string
         ss << args[i];
     }
     ss << "m";
+#else
+    ss << "\033[96m";
+    ss << "{";
+    for (const int v : args)
+    {
+        ss << " " << v;
+    }
+    ss << " }";
+#endif
     return ss.str();
 }
 
 template <ground_type_t GroundType>
-inline std::ostream& operator<<(std::ostream& os, const color_specifier_t<GroundType>& item)
+std::ostream& operator<<(std::ostream& os, const color_specifier_t<GroundType>& item)
 {
     return os << esc(to_args(item));
 }

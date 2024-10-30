@@ -18,7 +18,6 @@
 int main()
 {
     using namespace ferrugo::ansi_v2;
-    std::cout << fg(basic_color_t::red) << "Ala" << fg(default_color_t{});
-    std::cout << fg(bright_color_t::green) << "Kot" << fg(default_color_t{});
-    std::cout << (font::bold | font::dim) << std::endl;
+    std::cout << fg("20FF30") << "Ala" << fg(default_color_t{});
+    std::cout << fg(bright_color_t::red) << "Kot" << fg(default_color_t{});
 }
