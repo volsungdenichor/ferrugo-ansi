@@ -3,8 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <iomanip>
-#include <iostream>
+#include <ferrugo/ansi_v2/escape.hpp>
 #include <variant>
 
 namespace ferrugo
@@ -276,8 +275,6 @@ struct color_specifier_builder_fn
 static constexpr inline auto fg = color_specifier_builder_fn<ground_type_t::foreground>{};
 static constexpr inline auto bg = color_specifier_builder_fn<ground_type_t::background>{};
 
-using args_t = std::vector<int>;
-
 template <ground_type_t GroundType>
 auto to_args(const color_specifier_t<GroundType>& color_specifier) -> args_t
 {
@@ -311,32 +308,6 @@ auto to_args(const color_specifier_t<GroundType>& color_specifier) -> args_t
         }
     };
     return std::visit(visitor{ GroundType }, color_specifier.color.m_data);
-}
-
-inline auto esc(const args_t& args) -> std::string
-{
-    std::stringstream ss;
-#if 1
-    ss << "\033[";
-    for (std::size_t i = 0; i < args.size(); ++i)
-    {
-        if (i != 0)
-        {
-            ss << ";";
-        }
-        ss << args[i];
-    }
-    ss << "m";
-#else
-    ss << "\033[96m";
-    ss << "{";
-    for (const int v : args)
-    {
-        ss << " " << v;
-    }
-    ss << " }";
-#endif
-    return ss.str();
 }
 
 template <ground_type_t GroundType>

@@ -1,8 +1,8 @@
 #include <ferrugo/ansi/colors.hpp>
 #include <ferrugo/ansi/glyph.hpp>
 #include <ferrugo/ansi_v2/color.hpp>
+#include <ferrugo/ansi_v2/default_context.hpp>
 #include <ferrugo/ansi_v2/font.hpp>
-#include <ferrugo/ansi_v2/mb_string.hpp>
 #include <ferrugo/core/demangle.hpp>
 #include <ferrugo/core/ostream_utils.hpp>
 #include <ferrugo/core/pipe.hpp>
@@ -18,6 +18,11 @@
 int main()
 {
     using namespace ferrugo::ansi_v2;
-    std::cout << fg("20FF30") << "Ala" << fg(default_color_t{});
-    std::cout << fg(bright_color_t::red) << "Kot" << fg(default_color_t{});
+    auto ctx = default_context_t{ std::cout };
+
+    ctx.write_text(mb_string{ "❎Ala ma " });
+    ctx.push_style(style_t{ "FF0000", {}, font_t::underline });
+    ctx.write_text(mb_string{ "kota" });
+    ctx.pop_style();
+    ctx.write_text(mb_string{ "..." });
 }

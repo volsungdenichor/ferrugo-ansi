@@ -12,7 +12,7 @@
 
 namespace ferrugo
 {
-namespace ansi_2
+namespace ansi_v2
 {
 
 struct mb_char
@@ -158,5 +158,5 @@ struct mb_string_list : public std::vector<mb_string>
     }
 };
 
-}  // namespace ansi_2
+}  // namespace ansi_v2
 }  // namespace ferrugo
