@@ -169,19 +169,43 @@ struct palette_color_t
         return palette_color_t{ static_cast<std::uint8_t>(brightness + 232) };
     }
 
-    friend bool operator==(const palette_color_t& lhs, const palette_color_t& rhs)
+    friend std::ostream& operator<<(std::ostream& os, const palette_color_t item)
+    {
+        return os << "(palette " << static_cast<int>(item.index) << ")";
+    }
+};
+
+struct eq_visitor
+{
+    bool operator()(const default_color_t, const default_color_t) const
+    {
+        return true;
+    }
+
+    bool operator()(const basic_color_t lhs, const basic_color_t rhs) const
+    {
+        return lhs == rhs;
+    }
+
+    bool operator()(const bright_color_t lhs, const bright_color_t rhs) const
+    {
+        return lhs == rhs;
+    }
+
+    bool operator()(const palette_color_t lhs, const palette_color_t rhs) const
     {
         return lhs.index == rhs.index;
     }
 
-    friend bool operator!=(const palette_color_t& lhs, const palette_color_t& rhs)
+    bool operator()(const true_color_t lhs, const true_color_t rhs) const
     {
-        return !(lhs == rhs);
+        return lhs[0] == rhs[0] && lhs[1] == rhs[1] && lhs[2] == rhs[2];
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const palette_color_t& item)
+    template <class T, class U>
+    bool operator()(const T& lt, const U& rt) const
     {
-        return os << "(palette " << static_cast<int>(item.index) << ")";
+        return false;
     }
 };
 
@@ -190,35 +214,35 @@ struct color_t
     using data_type = std::variant<default_color_t, basic_color_t, bright_color_t, palette_color_t, true_color_t>;
     data_type m_data;
 
-    color_t() : m_data{ default_color_t{} }
+    color_t() : m_data{ std::in_place_type<default_color_t>, default_color_t{} }
     {
     }
 
-    color_t(default_color_t col) : m_data{ col }
+    color_t(default_color_t col) : m_data{ std::in_place_type<default_color_t>, col }
     {
     }
 
-    color_t(basic_color_t col) : m_data{ col }
+    color_t(basic_color_t col) : m_data{ std::in_place_type<basic_color_t>, col }
     {
     }
 
-    color_t(bright_color_t col) : m_data{ col }
+    color_t(bright_color_t col) : m_data{ std::in_place_type<bright_color_t>, col }
     {
     }
 
-    color_t(palette_color_t col) : m_data{ col }
+    color_t(palette_color_t col) : m_data{ std::in_place_type<palette_color_t>, col }
     {
     }
 
-    color_t(true_color_t col) : m_data{ col }
+    color_t(true_color_t col) : m_data{ std::in_place_type<true_color_t>, col }
     {
     }
 
-    color_t(std::string_view txt) : m_data{ true_color_t{ txt } }
+    color_t(std::string_view txt) : color_t{ true_color_t{ txt } }
     {
     }
 
-    color_t(const char* txt) : color_t(std::string_view(txt))
+    color_t(const char* txt) : color_t{ std::string_view(txt) }
     {
     }
 
@@ -232,17 +256,7 @@ struct color_t
 
     friend bool operator==(const color_t& lhs, const color_t& rhs)
     {
-        return std::visit(
-            [](const auto& lt, const auto& rt)
-            {
-                if constexpr (std::is_same_v<std::decay_t<decltype(lt)>, std::decay_t<decltype(rt)>>)
-                {
-                    return lt == rt;
-                }
-                return false;
-            },
-            lhs.m_data,
-            rhs.m_data);
+        return std::visit(eq_visitor{}, lhs.m_data, rhs.m_data);
     }
 
     friend bool operator!=(const color_t& lhs, const color_t& rhs)
@@ -260,7 +274,7 @@ enum class ground_type_t
 template <ground_type_t GroundType>
 struct color_specifier_t
 {
-    color_t color;
+    color_t color = {};
 };
 
 template <ground_type_t GroundType>
@@ -272,42 +286,43 @@ struct color_specifier_builder_fn
     }
 };
 
-static constexpr inline auto fg = color_specifier_builder_fn<ground_type_t::foreground>{};
-static constexpr inline auto bg = color_specifier_builder_fn<ground_type_t::background>{};
+static constexpr inline auto foreground = color_specifier_builder_fn<ground_type_t::foreground>{};
+static constexpr inline auto background = color_specifier_builder_fn<ground_type_t::background>{};
+
+struct to_args_visitor
+{
+    ground_type_t m_ground;
+
+    auto operator()(default_color_t) const -> args_t
+    {
+        return args_t{ m_ground == ground_type_t::foreground ? 39 : 49 };
+    }
+
+    auto operator()(basic_color_t col) const -> args_t
+    {
+        return args_t{ static_cast<int>(col) + (m_ground == ground_type_t::foreground ? 30 : 40) };
+    }
+
+    auto operator()(bright_color_t col) const -> args_t
+    {
+        return args_t{ static_cast<int>(col) + (m_ground == ground_type_t::foreground ? 90 : 100) };
+    }
+
+    auto operator()(palette_color_t col) const -> args_t
+    {
+        return args_t{ m_ground == ground_type_t::foreground ? 38 : 48, 5, col.index };
+    }
+
+    auto operator()(true_color_t col) const -> args_t
+    {
+        return args_t{ m_ground == ground_type_t::foreground ? 38 : 48, 2, col[0], col[1], col[2] };
+    }
+};
 
 template <ground_type_t GroundType>
 auto to_args(const color_specifier_t<GroundType>& color_specifier) -> args_t
 {
-    struct visitor
-    {
-        ground_type_t m_ground;
-
-        auto operator()(default_color_t) const -> args_t
-        {
-            return { m_ground == ground_type_t::foreground ? 39 : 49 };
-        }
-
-        auto operator()(basic_color_t col) const -> args_t
-        {
-            return { static_cast<int>(col) + (m_ground == ground_type_t::foreground ? 30 : 40) };
-        }
-
-        auto operator()(bright_color_t col) const -> args_t
-        {
-            return { static_cast<int>(col) + (m_ground == ground_type_t::foreground ? 90 : 100) };
-        }
-
-        auto operator()(palette_color_t col) const -> args_t
-        {
-            return { m_ground == ground_type_t::foreground ? 38 : 48, 5, col.index };
-        }
-
-        auto operator()(const true_color_t& col) const -> args_t
-        {
-            return { m_ground == ground_type_t::foreground ? 38 : 48, 2, col[0], col[1], col[2] };
-        }
-    };
-    return std::visit(visitor{ GroundType }, color_specifier.color.m_data);
+    return std::visit(to_args_visitor{ GroundType }, color_specifier.color.m_data);
 }
 
 template <ground_type_t GroundType>

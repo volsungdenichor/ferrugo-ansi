@@ -51,11 +51,11 @@ private:
         }
         if (prev_style.foreground != new_style.foreground)
         {
-            *m_os << esc(to_args(fg(new_style.foreground)));
+            *m_os << esc(to_args(foreground(new_style.foreground)));
         }
         if (prev_style.background != new_style.background)
         {
-            *m_os << esc(to_args(bg(new_style.background)));
+            *m_os << esc(to_args(background(new_style.background)));
         }
     }
 
