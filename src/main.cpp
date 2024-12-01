@@ -21,9 +21,9 @@ int main()
     using namespace ferrugo::ansi_v2;
     auto ctx = default_context_t{ std::cout };
 
-    std::cout << foreground(color_t("FF0000")) << "\n";
+    const auto highlighted = style_t{ basic_color_t::bright_red, basic_color_t::bright_white, font_t::underline };
 
-    const auto e = block(italic(fg("FF0000")("Ala"), (fg("FFFFFF") | bg("0000FF"))("ma")), fg("00FF00")("kota"));
+    const auto e = block(style(highlighted)("Ala", "ma", "kota"));
 
     e(ctx);
     std::cout << "\n";

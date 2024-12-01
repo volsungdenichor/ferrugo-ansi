@@ -119,7 +119,7 @@ struct style_applier_fn
 
 struct fg_fn
 {
-    auto operator()(const color_t& value) const -> style_applier_fn
+    auto operator[](const color_t& value) const -> style_applier_fn
     {
         return style_applier_fn{ [=](style_t& style) { style.foreground = value; } };
     }
@@ -127,7 +127,7 @@ struct fg_fn
 
 struct bg_fn
 {
-    auto operator()(const color_t& value) const -> style_applier_fn
+    auto operator[](const color_t& value) const -> style_applier_fn
     {
         return style_applier_fn{ [=](style_t& style) { style.background = value; } };
     }
@@ -138,6 +138,14 @@ struct font_fn
     auto operator()(font_t value) const -> style_applier_fn
     {
         return style_applier_fn{ [=](style_t& style) { style.font = value; } };
+    }
+};
+
+struct style_fn
+{
+    auto operator()(const style_t& value) const -> style_applier_fn
+    {
+        return style_applier_fn{ [=](style_t& style) { style = value; } };
     }
 };
 
@@ -154,14 +162,16 @@ static const inline auto dim = font(font_t::dim);
 static const inline auto inverse = font(font_t::inverse);
 static const inline auto crossed_out = font(font_t::crossed_out);
 
-static const inline auto black = fg(basic_color_t::black);
-static const inline auto red = fg(basic_color_t::red);
-static const inline auto green = fg(basic_color_t::green);
-static const inline auto yellow = fg(basic_color_t::yellow);
-static const inline auto blue = fg(basic_color_t::blue);
-static const inline auto magenta = fg(basic_color_t::magenta);
-static const inline auto cyan = fg(basic_color_t::cyan);
-static const inline auto white = fg(basic_color_t::white);
+static const inline auto black = fg[basic_color_t::black];
+static const inline auto red = fg[basic_color_t::red];
+static const inline auto green = fg[basic_color_t::green];
+static const inline auto yellow = fg[basic_color_t::yellow];
+static const inline auto blue = fg[basic_color_t::blue];
+static const inline auto magenta = fg[basic_color_t::magenta];
+static const inline auto cyan = fg[basic_color_t::cyan];
+static const inline auto white = fg[basic_color_t::white];
+
+static const inline auto style = style_fn{};
 
 }  // namespace ansi_v2
 }  // namespace ferrugo

@@ -13,22 +13,22 @@ namespace ansi_v2
 
 enum class basic_color_t
 {
-    black,
-    red,
-    green,
-    yellow,
-    blue,
-    magenta,
-    cyan,
-    white,
-    bright_black,
-    bright_red,
-    bright_green,
-    bright_yellow,
-    bright_blue,
-    bright_magenta,
-    bright_cyan,
-    bright_white
+    black = 0,
+    red = 1,
+    green = 2,
+    yellow = 3,
+    blue = 4,
+    magenta = 5,
+    cyan = 6,
+    white = 7,
+    bright_black = 60,
+    bright_red = 61,
+    bright_green = 62,
+    bright_yellow = 63,
+    bright_blue = 64,
+    bright_magenta = 65,
+    bright_cyan = 66,
+    bright_white = 67
 };
 
 inline std::ostream& operator<<(std::ostream& os, basic_color_t item)
@@ -162,6 +162,7 @@ struct palette_color_t
 struct color_t
 {
     using data_type = std::variant<default_color_t, basic_color_t, palette_color_t, true_color_t>;
+
     data_type m_data;
 
     color_t() : m_data{ std::in_place_type<default_color_t>, default_color_t{} }
