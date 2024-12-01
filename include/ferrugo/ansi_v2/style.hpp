@@ -14,8 +14,6 @@ struct style_t
     color_t background;
     font_t font;
 
-    // style_t() = default;
-
     friend std::ostream& operator<<(std::ostream& os, const style_t& item)
     {
         return os << "((foreground " << item.foreground << ") (background " << item.background << ") (font " << item.font
