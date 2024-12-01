@@ -10,33 +10,26 @@ namespace ferrugo
 namespace ansi_v2
 {
 
-using args_t = std::vector<int>;
-
-inline auto esc(const args_t& args) -> std::string
+struct args_t : public std::vector<int>
 {
-    std::stringstream ss;
-#if 1
-    ss << "\033[";
-    for (std::size_t i = 0; i < args.size(); ++i)
+    using base_t = std::vector<int>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const args_t& item)
     {
-        if (i != 0)
+        os << "\033[";
+        for (std::size_t i = 0; i < item.size(); ++i)
         {
-            ss << ";";
+            if (i != 0)
+            {
+                os << ";";
+            }
+            os << item[i];
         }
-        ss << args[i];
+        os << "m";
+        return os;
     }
-    ss << "m";
-#else
-    ss << "\033[96m";
-    ss << "{";
-    for (const int v : args)
-    {
-        ss << " " << v;
-    }
-    ss << " }";
-#endif
-    return ss.str();
-}
+};
 
 }  // namespace ansi_v2
 }  // namespace ferrugo

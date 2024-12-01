@@ -47,15 +47,15 @@ private:
     {
         if (prev_style.font != new_style.font)
         {
-            *m_os << esc(to_args(new_style.font - prev_style.font));
+            *m_os << (new_style.font - prev_style.font);
         }
         if (prev_style.foreground != new_style.foreground)
         {
-            *m_os << esc(to_args(foreground(new_style.foreground)));
+            *m_os << foreground(new_style.foreground);
         }
         if (prev_style.background != new_style.background)
         {
-            *m_os << esc(to_args(background(new_style.background)));
+            *m_os << background(new_style.background);
         }
     }
 

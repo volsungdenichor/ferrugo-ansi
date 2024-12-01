@@ -69,7 +69,11 @@ using style_modifier_t = std::function<void(style_t&)>;
 
 style_modifier_t operator|(style_modifier_t lhs, style_modifier_t rhs)
 {
-    return [=](style_t& style) { lhs(style); };
+    return [=](style_t& style)
+    {
+        lhs(style);
+        rhs(style);
+    };
 }
 
 struct style_applier_fn

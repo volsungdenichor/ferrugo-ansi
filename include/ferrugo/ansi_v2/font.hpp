@@ -189,21 +189,21 @@ struct font_diff_t
 
     friend std::ostream& operator<<(std::ostream& os, const font_diff_t& item)
     {
-        os << "(font_diff ";
-        os << "(enabled";
+        static const std::map<font_t, int> map = {
+            { font_t::bold, 1 },      { font_t::dim, 2 },         { font_t::italic, 3 },
+            { font_t::underline, 4 }, { font_t::blink, 5 },       { font_t::inverse, 7 },
+            { font_t::hidden, 8 },    { font_t::crossed_out, 9 }, { font_t::double_underline, 21 },
+        };
+        args_t result = { 22, 23, 24, 25, 27, 28, 29 };
         for (const font_t f : item.enabled)
         {
-            os << " " << f;
+            const auto iter = map.find(f);
+            if (iter != map.end())
+            {
+                result.push_back(iter->second);
+            }
         }
-        os << ") ";
-        os << "(disabled";
-        for (const font_t f : item.disabled)
-        {
-            os << " " << f;
-        }
-        os << ")";
-        os << "))";
-        return os;
+        return os << result;
     }
 };
 
@@ -230,25 +230,6 @@ inline auto operator-(const font_t lhs, const font_t rhs) -> font_diff_t
         if (!lhs_contains && rhs_contains)
         {
             result.disabled.push_back(f);
-        }
-    }
-    return result;
-}
-
-inline auto to_args(const font_diff_t& diff) -> args_t
-{
-    static const std::map<font_t, int> map = {
-        { font_t::bold, 1 },      { font_t::dim, 2 },         { font_t::italic, 3 },
-        { font_t::underline, 4 }, { font_t::blink, 5 },       { font_t::inverse, 7 },
-        { font_t::hidden, 8 },    { font_t::crossed_out, 9 }, { font_t::double_underline, 21 },
-    };
-    args_t result = { 22, 23, 24, 25, 27, 28, 29 };
-    for (const font_t f : diff.enabled)
-    {
-        const auto iter = map.find(f);
-        if (iter != map.end())
-        {
-            result.push_back(iter->second);
         }
     }
     return result;
