@@ -3,12 +3,12 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <ferrugo/ansi_v2/escape.hpp>
+#include <ferrugo/ansi/escape.hpp>
 #include <variant>
 
 namespace ferrugo
 {
-namespace ansi_v2
+namespace ansi
 {
 
 enum class basic_color_t
@@ -153,6 +153,11 @@ struct palette_color_t
         return lhs.index == rhs.index;
     }
 
+    friend bool operator!=(const palette_color_t lhs, const palette_color_t rhs)
+    {
+        return !(lhs == rhs);
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const palette_color_t item)
     {
         return os << "(palette " << static_cast<int>(item.index) << ")";
@@ -267,5 +272,5 @@ struct color_specifier_builder_fn
 static constexpr inline auto foreground = color_specifier_builder_fn<ground_type_t::foreground>{};
 static constexpr inline auto background = color_specifier_builder_fn<ground_type_t::background>{};
 
-}  // namespace ansi_v2
+}  // namespace ansi
 }  // namespace ferrugo

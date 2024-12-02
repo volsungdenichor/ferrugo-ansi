@@ -1,13 +1,13 @@
 #pragma once
 
 #include <cstdint>
-#include <ferrugo/ansi_v2/escape.hpp>
+#include <ferrugo/ansi/escape.hpp>
 #include <iostream>
 #include <map>
 
 namespace ferrugo
 {
-namespace ansi_v2
+namespace ansi
 {
 
 struct font_t
@@ -235,5 +235,5 @@ inline auto operator-(const font_t lhs, const font_t rhs) -> font_diff_t
     return result;
 }
 
-}  // namespace ansi_v2
+}  // namespace ansi
 }  // namespace ferrugo

@@ -7,7 +7,7 @@
 
 namespace ferrugo
 {
-namespace ansi_v2
+namespace ansi
 {
 
 struct args_t : public std::vector<int>
@@ -31,5 +31,5 @@ struct args_t : public std::vector<int>
     }
 };
 
-}  // namespace ansi_v2
+}  // namespace ansi
 }  // namespace ferrugo

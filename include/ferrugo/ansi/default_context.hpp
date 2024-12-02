@@ -1,11 +1,11 @@
 #pragma once
 
-#include <ferrugo/ansi_v2/context.hpp>
+#include <ferrugo/ansi/context.hpp>
 #include <vector>
 
 namespace ferrugo
 {
-namespace ansi_v2
+namespace ansi
 {
 
 class default_context_t : public context_t
@@ -26,6 +26,16 @@ public:
         const auto current_style = get_current_style();
         m_style_stack.push_back(style);
         change_style(current_style, style);
+
+        std::cerr << "pushing " << style << "\n";
+        std::cerr << "{"
+                  << "\n";
+        for (const auto& item : m_style_stack)
+        {
+            std::cerr << "- " << item << "\n";
+        }
+        std::cerr << "}"
+                  << "\n";
     }
 
     void pop_style() override
@@ -45,6 +55,7 @@ public:
 private:
     void change_style(const style_t& prev_style, const style_t& new_style)
     {
+        std::cerr << "\n" << prev_style << " -> " << new_style << "\n";
         if (prev_style.font != new_style.font)
         {
             *m_os << (new_style.font - prev_style.font);
@@ -64,5 +75,5 @@ private:
     std::vector<style_t> m_style_stack;
 };
 
-}  // namespace ansi_v2
+}  // namespace ansi
 }  // namespace ferrugo

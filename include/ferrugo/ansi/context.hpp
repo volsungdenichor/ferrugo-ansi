@@ -1,12 +1,12 @@
 #pragma once
 
-#include <ferrugo/ansi_v2/mb_string.hpp>
-#include <ferrugo/ansi_v2/style.hpp>
+#include <ferrugo/ansi/mb_string.hpp>
+#include <ferrugo/ansi/style.hpp>
 
 namespace ferrugo
 {
 
-namespace ansi_v2
+namespace ansi
 {
 
 struct context_t
@@ -18,5 +18,5 @@ struct context_t
     virtual void write_text(const mb_string& text) = 0;
 };
 
-}  // namespace ansi_v2
+}  // namespace ansi
 }  // namespace ferrugo
