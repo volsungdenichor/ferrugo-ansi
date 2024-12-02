@@ -11,41 +11,35 @@ namespace ferrugo
 namespace ansi
 {
 
-struct element_t
-{
-    using function_type = std::function<void(context_t&)>;
-
-    function_type m_fn;
-
-    explicit element_t(const function_type& fn) : m_fn{ std::move(fn) }
-    {
-    }
-
-    element_t(const mb_string& text) : element_t{ [=](context_t& ctx) { ctx.write_text(text); } }
-    {
-    }
-
-    element_t(const std::string& text) : element_t{ mb_string{ text } }
-    {
-    }
-
-    element_t(const char* text) : element_t{ std::string{ text } }
-    {
-    }
-
-    void apply(context_t& ctx) const
-    {
-        m_fn(ctx);
-    }
-};
+using element_t = std::function<void(context_t&)>;
 
 namespace detail
 {
 
-template <class... Args>
-auto to_elements(const Args&... args) -> std::vector<element_t>
+struct to_element_fn
 {
-    return std::vector<element_t>{ element_t{ args }... };
+    auto operator()(const mb_string& text) const -> element_t
+    {
+        return [=](context_t& ctx) { ctx.write_text(text); };
+    }
+
+    auto operator()(const std::string& text) const -> element_t
+    {
+        return (*this)(mb_string(text));
+    }
+
+    auto operator()(element_t element) const -> element_t
+    {
+        return element;
+    }
+};
+
+static constexpr inline auto to_element = to_element_fn{};
+
+template <class... Args>
+auto to_elements(Args&&... args) -> std::vector<element_t>
+{
+    return std::vector<element_t>{ to_element(std::forward<Args>(args))... };
 }
 
 struct block_fn
@@ -56,15 +50,15 @@ struct block_fn
                           {
                               for (const element_t& child : children)
                               {
-                                  child.apply(ctx);
+                                  child(ctx);
                               }
                           } };
     }
 
     template <class... Args>
-    auto operator()(const Args&... args) const -> element_t
+    auto operator()(Args&&... args) const -> element_t
     {
-        return (*this)(to_elements(args...));
+        return (*this)(to_elements(std::forward<Args>(args)...));
     }
 };
 
@@ -79,23 +73,23 @@ struct style_applier_fn
 
     auto operator()(std::vector<element_t> children) const -> element_t
     {
-        return element_t{ [=](context_t& ctx)
+        return element_t{ [=, *this](context_t& ctx)
                           {
                               style_t new_style = ctx.get_current_style();
                               m_modifier(new_style);
                               ctx.push_style(new_style);
                               for (const element_t& child : children)
                               {
-                                  child.apply(ctx);
+                                  child(ctx);
                               }
                               ctx.pop_style();
                           } };
     }
 
     template <class... Args>
-    auto operator()(const Args&... args) const -> element_t
+    auto operator()(Args&&... args) const -> element_t
     {
-        return (*this)(to_elements(args...));
+        return (*this)(to_elements(std::forward<Args>(args)...));
     }
 
     friend style_applier_fn operator|(style_applier_fn lhs, style_applier_fn rhs)
