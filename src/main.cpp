@@ -14,7 +14,17 @@ int main()
 
     auto ctx = default_context_t{ std::cout };
 
-    const auto e = block((fg[bright_color_t::white] | bg[basic_color_t::yellow])("Ala", underline("ma"), "kota"));
+    const auto e = block(
+        fg["00FFFF"]("Europe"),  //
+        list(                    //
+            "Germany",
+            "France",
+            block(  //
+                fg["00FF00"]("Poland"),
+                list(  //
+                    "Warsaw",
+                    "Krakow",
+                    fg["FF0000"]("Wroclaw")))));
 
     ctx << e;
     std::cout << "\n";

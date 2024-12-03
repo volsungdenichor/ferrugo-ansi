@@ -16,6 +16,10 @@ struct context_t
     virtual void push_style(const style_t& style) = 0;
     virtual void pop_style() = 0;
     virtual void write_text(const mb_string& text) = 0;
+    virtual void push_list() = 0;
+    virtual void pop_list() = 0;
+    virtual void start_list_item() = 0;
+    virtual void end_list_item() = 0;
 };
 
 }  // namespace ansi

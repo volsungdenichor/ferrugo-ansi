@@ -11,7 +11,7 @@ namespace ansi
 class default_context_t : public context_t
 {
 public:
-    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }
+    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_indent{}
     {
     }
 
@@ -42,6 +42,25 @@ public:
         *m_os << text;
     }
 
+    void push_list() override
+    {
+        ++m_indent;
+    }
+
+    void pop_list() override
+    {
+        --m_indent;
+    }
+
+    void start_list_item() override
+    {
+        *m_os << "\n" << std::string(2 * m_indent, ' ') << "+ ";
+    }
+
+    void end_list_item() override
+    {
+    }
+
 private:
     void change_style(const style_t& prev_style, const style_t& new_style)
     {
@@ -62,6 +81,7 @@ private:
 private:
     std::ostream* m_os;
     std::vector<style_t> m_style_stack;
+    std::size_t m_indent;
 };
 
 }  // namespace ansi

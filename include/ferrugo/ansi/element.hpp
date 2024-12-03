@@ -68,6 +68,30 @@ struct block_fn
     }
 };
 
+struct list_fn
+{
+    auto operator()(std::vector<element_t> children) const -> element_t
+    {
+        return element_t{ [=](context_t& ctx)
+                          {
+                              ctx.push_list();
+                              for (const element_t& child : children)
+                              {
+                                  ctx.start_list_item();
+                                  child(ctx);
+                                  ctx.end_list_item();
+                              }
+                              ctx.pop_list();
+                          } };
+    }
+
+    template <class... Args>
+    auto operator()(Args&&... args) const -> element_t
+    {
+        return (*this)(to_elements(std::forward<Args>(args)...));
+    }
+};
+
 struct style_applier_fn
 {
     using style_modifier_t = std::function<void(style_t&)>;
@@ -140,6 +164,7 @@ struct font_fn
 }  // namespace detail
 
 static constexpr inline auto block = detail::block_fn{};
+static constexpr inline auto list = detail::list_fn{};
 static constexpr inline auto font = detail::font_fn{};
 
 static constexpr auto fg = detail::set_color_fn<ground_type_t::foreground>{};
