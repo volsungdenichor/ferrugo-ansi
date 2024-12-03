@@ -4,6 +4,7 @@
 #include <ferrugo/ansi/escape.hpp>
 #include <iostream>
 #include <map>
+#include <set>
 
 namespace ferrugo
 {
@@ -184,26 +185,38 @@ inline const font_t font_t::double_underline{ 1 << 9 };
 
 struct font_diff_t
 {
-    std::vector<font_t> enabled;
-    std::vector<font_t> disabled;
+    std::set<font_t> enabled;
+    std::set<font_t> disabled;
 
     friend std::ostream& operator<<(std::ostream& os, const font_diff_t& item)
     {
-        static const std::map<font_t, int> map = {
-            { font_t::bold, 1 },      { font_t::dim, 2 },         { font_t::italic, 3 },
-            { font_t::underline, 4 }, { font_t::blink, 5 },       { font_t::inverse, 7 },
-            { font_t::hidden, 8 },    { font_t::crossed_out, 9 }, { font_t::double_underline, 21 },
-        };
-        args_t result = { 22, 23, 24, 25, 27, 28, 29 };
-        for (const font_t f : item.enabled)
+        args_t result;
+
+        const auto handle = [&](font_t f, int on_set, int on_reset)
         {
-            const auto iter = map.find(f);
-            if (iter != map.end())
+            if (item.enabled.count(f))
             {
-                result.push_back(iter->second);
+                result.push_back(on_set);
             }
+            if (item.disabled.count(f))
+            {
+                result.push_back(on_reset);
+            }
+        };
+
+        handle(font_t::bold, 1, 21);
+        handle(font_t::dim, 2, 22);
+        handle(font_t::italic, 3, 23);
+        handle(font_t::underline, 4, 24);
+        handle(font_t::blink, 5, 25);
+        handle(font_t::crossed_out, 9, 29);
+        handle(font_t::hidden, 8, 28);
+
+        if (!result.empty())
+        {
+            os << result;
         }
-        return os << result;
+        return os;
     }
 };
 
@@ -225,11 +238,11 @@ inline auto operator-(const font_t lhs, const font_t rhs) -> font_diff_t
         const auto rhs_contains = rhs.contains(f);
         if (lhs_contains && !rhs_contains)
         {
-            result.enabled.push_back(f);
+            result.enabled.insert(f);
         }
         if (!lhs_contains && rhs_contains)
         {
-            result.disabled.push_back(f);
+            result.disabled.insert(f);
         }
     }
     return result;

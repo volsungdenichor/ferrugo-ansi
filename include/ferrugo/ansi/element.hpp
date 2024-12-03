@@ -13,6 +13,12 @@ namespace ansi
 
 using element_t = std::function<void(context_t&)>;
 
+inline context_t& operator<<(context_t& ctx, const element_t& item)
+{
+    item(ctx);
+    return ctx;
+}
+
 namespace detail
 {
 
@@ -145,6 +151,8 @@ static const inline auto underline = font[font_t::underline];
 static const inline auto dim = font[font_t::dim];
 static const inline auto inverse = font[font_t::inverse];
 static const inline auto crossed_out = font[font_t::crossed_out];
+static const inline auto blink = font[font_t::blink];
+static const inline auto hidden = font[font_t::hidden];
 
 }  // namespace ansi
 }  // namespace ferrugo

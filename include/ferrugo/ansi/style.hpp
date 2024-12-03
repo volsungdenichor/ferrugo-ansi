@@ -16,9 +16,8 @@ struct style_t
 
     friend std::ostream& operator<<(std::ostream& os, const style_t& item)
     {
-        // return os << "((foreground " << item.foreground << ") (background " << item.background << ") (font " << item.font
-        //           << "))";
-        return os << "((foreground " << item.foreground << ") (background " << item.background << ")";
+        return os << "((foreground " << item.foreground << ") (background " << item.background << ") (font " << item.font
+                  << "))";
     }
 };
 

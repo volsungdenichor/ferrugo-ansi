@@ -14,8 +14,8 @@ int main()
 
     auto ctx = default_context_t{ std::cout };
 
-    const auto e = (fg[bright_color_t::white] | bg[basic_color_t::yellow])("Ala", bold("ma"), underline("kota"));
+    const auto e = block((fg[bright_color_t::white] | bg[basic_color_t::yellow])("Ala", underline("ma"), "kota"));
 
-    e(ctx);
+    ctx << e;
     std::cout << "\n";
 }
