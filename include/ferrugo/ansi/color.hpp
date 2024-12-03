@@ -13,22 +13,26 @@ namespace ansi
 
 enum class basic_color_t
 {
-    black = 0,
-    red = 1,
-    green = 2,
-    yellow = 3,
-    blue = 4,
-    magenta = 5,
-    cyan = 6,
-    white = 7,
-    bright_black = 60,
-    bright_red = 61,
-    bright_green = 62,
-    bright_yellow = 63,
-    bright_blue = 64,
-    bright_magenta = 65,
-    bright_cyan = 66,
-    bright_white = 67
+    black,
+    red,
+    green,
+    yellow,
+    blue,
+    magenta,
+    cyan,
+    white,
+};
+
+enum class bright_color_t
+{
+    black,
+    red,
+    green,
+    yellow,
+    blue,
+    magenta,
+    cyan,
+    white,
 };
 
 inline std::ostream& operator<<(std::ostream& os, basic_color_t item)
@@ -45,15 +49,27 @@ inline std::ostream& operator<<(std::ostream& os, basic_color_t item)
         CASE(magenta);
         CASE(cyan);
         CASE(white);
-        CASE(bright_black);
-        CASE(bright_red);
-        CASE(bright_green);
-        CASE(bright_yellow);
-        CASE(bright_blue);
-        CASE(bright_magenta);
-        CASE(bright_cyan);
-        CASE(bright_white);
         default: throw std::runtime_error{ "unknown basic_color_t" };
+    }
+#undef CASE
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, bright_color_t item)
+{
+#define CASE(v) \
+    case bright_color_t::v: return os << "bright_color_t::" << #v
+    switch (item)
+    {
+        CASE(black);
+        CASE(red);
+        CASE(green);
+        CASE(yellow);
+        CASE(blue);
+        CASE(magenta);
+        CASE(cyan);
+        CASE(white);
+        default: throw std::runtime_error{ "unknown bright_color_t" };
     }
 #undef CASE
     return os;
@@ -166,7 +182,7 @@ struct palette_color_t
 
 struct color_t
 {
-    using data_type = std::variant<default_color_t, basic_color_t, palette_color_t, true_color_t>;
+    using data_type = std::variant<default_color_t, basic_color_t, bright_color_t, palette_color_t, true_color_t>;
 
     data_type m_data;
 
@@ -179,6 +195,10 @@ struct color_t
     }
 
     color_t(basic_color_t col) : m_data{ std::in_place_type<basic_color_t>, col }
+    {
+    }
+
+    color_t(bright_color_t col) : m_data{ std::in_place_type<bright_color_t>, col }
     {
     }
 
@@ -240,6 +260,11 @@ struct color_specifier_t
         auto operator()(basic_color_t col) const -> args_t
         {
             return args_t{ static_cast<int>(col) + (Base + 30) };
+        }
+
+        auto operator()(bright_color_t col) const -> args_t
+        {
+            return args_t{ static_cast<int>(col) + (Base + 90) };
         }
 
         auto operator()(palette_color_t col) const -> args_t
