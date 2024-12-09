@@ -9,12 +9,14 @@ namespace ferrugo
 namespace ansi
 {
 
-using list_item_formatter = std::function<void(context_t&, std::size_t, std::size_t)>;
+using list_state_t = std::vector<std::size_t>;
+
+using list_item_formatter = std::function<void(context_t&, const list_state_t&)>;
 
 class default_context_t : public context_t
 {
 public:
-    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_indent{}, m_list_state{}
+    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_list_state{}
     {
     }
 
@@ -47,37 +49,39 @@ public:
 
     void push_list() override
     {
-        ++m_indent;
         m_list_state.push_back(0);
     }
 
     void pop_list() override
     {
-        --m_indent;
         m_list_state.pop_back();
     }
 
     void start_list_item() override
     {
         const list_item_formatter formatter = get_list_item_formatter(m_list_state.size());
-        formatter(*this, m_list_state.back(), m_list_state.size());
-        ++m_list_state.back();
+        formatter(*this, m_list_state);
     }
 
     void end_list_item() override
     {
+        ++m_list_state.back();
     }
 
 private:
     list_item_formatter get_list_item_formatter(std::size_t level) const
     {
-        return [](context_t& ctx, std::size_t n, std::size_t indent)
+        return [](context_t& ctx, const list_state_t& list_state)
         {
             ctx.write_text(mb_string("\n"));
-            ctx.write_text(mb_string(std::string(2 * indent, ' ')));
-            ctx.write_text(mb_string("▪️ "));
-            ctx.write_text(mb_string(std::to_string(n + 1)));
-            ctx.write_text(mb_string(". "));
+            ctx.write_text(mb_string(std::string(2 * list_state.size(), ' ')));
+
+            for (std::size_t i = 0; i < list_state.size(); ++i)
+            {
+                ctx.write_text(mb_string(std::to_string(list_state[i] + 1)));
+                ctx.write_text(mb_string("."));
+            }
+            ctx.write_text(mb_string(" "));
         };
     }
 
@@ -100,8 +104,7 @@ private:
 private:
     std::ostream* m_os;
     std::vector<style_t> m_style_stack;
-    std::size_t m_indent;
-    std::vector<std::size_t> m_list_state;
+    list_state_t m_list_state;
 };
 
 }  // namespace ansi

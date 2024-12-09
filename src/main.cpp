@@ -23,8 +23,8 @@ int main()
                 fg["00FF00"]("Poland"),
                 list(  //
                     "Warsaw",
-                    "Krakow",
-                    fg["FF0000"]("Wroclaw")))));
+                    "Kraków",
+                    fg["FF0000"]("Wrocław")))));
 
     ctx << e;
     std::cout << "\n";
