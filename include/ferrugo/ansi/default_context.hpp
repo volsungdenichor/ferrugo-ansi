@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ferrugo/ansi/context.hpp>
+#include <functional>
 #include <vector>
 
 namespace ferrugo
@@ -8,10 +9,12 @@ namespace ferrugo
 namespace ansi
 {
 
+using list_item_formatter = std::function<void(context_t&, std::size_t, std::size_t)>;
+
 class default_context_t : public context_t
 {
 public:
-    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_indent{}
+    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_indent{}, m_list_state{}
     {
     }
 
@@ -45,16 +48,20 @@ public:
     void push_list() override
     {
         ++m_indent;
+        m_list_state.push_back(0);
     }
 
     void pop_list() override
     {
         --m_indent;
+        m_list_state.pop_back();
     }
 
     void start_list_item() override
     {
-        *m_os << "\n" << std::string(2 * m_indent, ' ') << "+ ";
+        const list_item_formatter formatter = get_list_item_formatter(m_list_state.size());
+        formatter(*this, m_list_state.back(), m_list_state.size());
+        ++m_list_state.back();
     }
 
     void end_list_item() override
@@ -62,6 +69,18 @@ public:
     }
 
 private:
+    list_item_formatter get_list_item_formatter(std::size_t level) const
+    {
+        return [](context_t& ctx, std::size_t n, std::size_t indent)
+        {
+            ctx.write_text(mb_string("\n"));
+            ctx.write_text(mb_string(std::string(2 * indent, ' ')));
+            ctx.write_text(mb_string("▪️ "));
+            ctx.write_text(mb_string(std::to_string(n + 1)));
+            ctx.write_text(mb_string(". "));
+        };
+    }
+
     void change_style(const style_t& prev_style, const style_t& new_style)
     {
         if (prev_style.font != new_style.font)
@@ -82,6 +101,7 @@ private:
     std::ostream* m_os;
     std::vector<style_t> m_style_stack;
     std::size_t m_indent;
+    std::vector<std::size_t> m_list_state;
 };
 
 }  // namespace ansi
