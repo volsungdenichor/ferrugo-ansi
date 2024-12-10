@@ -1,5 +1,7 @@
 #include <ferrugo/ansi/default_context.hpp>
 #include <ferrugo/ansi/element.hpp>
+#include <ferrugo/ansi/format.hpp>
+#include <ferrugo/ansi/formatters.hpp>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -14,7 +16,7 @@ int main()
 
     auto ctx = default_context_t{ std::cout };
 
-    const auto e = block(
+    ctx << block(
         fg["00FFFF"]("Europe"),  //
         list(                    //
             "Germany",
@@ -24,8 +26,7 @@ int main()
                 list(  //
                     "Warsaw",
                     "Kraków",
-                    fg["FF0000"]("Wrocław")))));
-
-    ctx << e;
+                    fg["FF0000"]("Wrocław")))))
+        << text("\nAla ma {} kota oraz {} psa.", 1.5, "kosmatego");
     std::cout << "\n";
 }
