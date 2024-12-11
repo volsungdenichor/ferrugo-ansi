@@ -11,12 +11,17 @@ namespace ansi
 
 using list_state_t = std::vector<std::size_t>;
 
-using list_item_formatter = std::function<void(context_t&, const list_state_t&)>;
+using list_item_formatter_t = std::function<void(context_t&, const list_state_t&)>;
+using list_item_formatter_factory_t = std::function<list_item_formatter_t(std::size_t)>;
 
 class default_context_t : public context_t
 {
 public:
-    explicit default_context_t(std::ostream& os) : m_os{ &os }, m_style_stack{ style_t{} }, m_list_state{}
+    explicit default_context_t(std::ostream& os, list_item_formatter_factory_t list_item_formatter_factory)
+        : m_os{ &os }
+        , m_style_stack{ style_t{} }
+        , m_list_state{}
+        , m_list_item_formatter_factory(std::move(list_item_formatter_factory))
     {
     }
 
@@ -59,7 +64,7 @@ public:
 
     void start_list_item() override
     {
-        const list_item_formatter formatter = get_list_item_formatter(m_list_state.size());
+        const list_item_formatter_t formatter = m_list_item_formatter_factory(m_list_state.size());
         formatter(*this, m_list_state);
     }
 
@@ -69,22 +74,6 @@ public:
     }
 
 private:
-    list_item_formatter get_list_item_formatter(std::size_t level) const
-    {
-        return [](context_t& ctx, const list_state_t& list_state)
-        {
-            ctx.write_text(mb_string("\n"));
-            ctx.write_text(mb_string(std::string(2 * list_state.size(), ' ')));
-
-            for (std::size_t i = 0; i < list_state.size(); ++i)
-            {
-                ctx.write_text(mb_string(std::to_string(list_state[i] + 1)));
-                ctx.write_text(mb_string("."));
-            }
-            ctx.write_text(mb_string(" "));
-        };
-    }
-
     void change_style(const style_t& prev_style, const style_t& new_style)
     {
         if (prev_style.font != new_style.font)
@@ -105,6 +94,7 @@ private:
     std::ostream* m_os;
     std::vector<style_t> m_style_stack;
     list_state_t m_list_state;
+    list_item_formatter_factory_t m_list_item_formatter_factory;
 };
 
 }  // namespace ansi
