@@ -10,6 +10,20 @@
 #include <optional>
 #include <string>
 
+struct Person
+{
+    std::string name;
+    std::vector<int> dates;
+};
+
+template <>
+struct ferrugo::ansi::formatter<Person> : ferrugo::ansi::struct_formatter<Person>
+{
+    formatter() : struct_formatter<Person>{ "Person", { { "name", &Person::name }, { "dates", &Person::dates } } }
+    {
+    }
+};
+
 int main()
 {
     using namespace ferrugo::ansi;
@@ -50,6 +64,10 @@ int main()
     };
 
     auto ctx = default_context_t{ std::cout, get_list_item_formatter };
+
+    const auto persons = std::vector{ Person{ "Fryderyk", { 1810, 1849 } }, Person{ "Juliusz", { 1809, 1849 } } };
+    ctx << text("{}\n", persons);
+    ctx << text("{}\n", std::tuple{ 2.3, 123, "ABC" });
 
     ctx << block(
         fg["00FFFF"]("Europe"),  //

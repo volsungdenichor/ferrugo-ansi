@@ -2,6 +2,8 @@
 
 #include <ferrugo/ansi/format.hpp>
 #include <sstream>
+#include <tuple>
+#include <vector>
 
 namespace ferrugo
 {
@@ -175,6 +177,109 @@ struct formatter<char[N]>
     {
         ctx.write_text(mb_string(item));
     }
+};
+
+template <class T>
+struct struct_formatter
+{
+    struct field_info
+    {
+        using field_formatter_fn = std::function<void(context_t&, const T&)>;
+
+        std::string_view name;
+        field_formatter_fn field_formater;
+
+        template <class Type>
+        field_info(std::string_view name, Type T::*field)
+            : name{ name }
+            , field_formater{ [=](context_t& ctx, const T& item) { write(ctx, item.*field); } }
+        {
+        }
+    };
+
+    struct_formatter(std::string_view name, std::vector<field_info> fields) : m_name{ name }, m_fields{ std::move(fields) }
+    {
+    }
+
+    void parse(const parse_context& ctx)
+    {
+    }
+
+    void format(context_t& ctx, const T& item) const
+    {
+        write(ctx, "(", m_name, " ");
+        for (const field_info& field : m_fields)
+        {
+            write(ctx, "(", field.name, " ");
+            field.field_formater(ctx, item);
+            write(ctx, ")");
+        }
+        write(ctx, ")");
+    }
+
+    std::string_view m_name;
+    std::vector<field_info> m_fields;
+};
+
+struct range_formatter
+{
+    void parse(const parse_context& ctx)
+    {
+    }
+
+    template <class T>
+    void format(context_t& ctx, const T& item) const
+    {
+        write(ctx, "[");
+        auto it = std::begin(item);
+        const auto end = std::end(item);
+        if (it != end)
+        {
+            write(ctx, *it++);
+        }
+        for (; it != end; ++it)
+        {
+            write(ctx, " ");
+            write(ctx, *it);
+        }
+        write(ctx, "]");
+    }
+};
+
+struct tuple_formatter
+{
+    void parse(const parse_context& ctx)
+    {
+    }
+
+    template <class T>
+    void format(context_t& ctx, const T& item) const
+    {
+        write(ctx, "(");
+        std::apply(
+            [&ctx](const auto&... args)
+            {
+                auto n = 0u;
+                (write(ctx, args, (++n != sizeof...(args) ? " " : "")), ...);
+            },
+            item);
+        write(ctx, ")");
+    }
+};
+
+template <class... Args>
+struct formatter<std::vector<Args...>> : range_formatter
+{
+};
+
+template <class... Args>
+struct formatter<std::tuple<Args...>> : tuple_formatter
+{
+};
+
+template <class... Args>
+struct formatter<std::pair<Args...>> : tuple_formatter
+{
 };
 
 }  // namespace ansi

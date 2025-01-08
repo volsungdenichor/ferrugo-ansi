@@ -20,6 +20,12 @@ struct format_error : std::runtime_error
 template <class T, class = void>
 struct formatter;
 
+template <class... Args>
+void write(context_t& format_ctx, const Args&... args)
+{
+    (formatter<Args>{}.format(format_ctx, args), ...);
+}
+
 class parse_context
 {
 public:
