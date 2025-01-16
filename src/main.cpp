@@ -19,7 +19,7 @@ struct Person
 template <>
 struct ferrugo::ansi::formatter<Person> : ferrugo::ansi::struct_formatter<Person>
 {
-    formatter() : struct_formatter<Person>{ "Person", { { "name", &Person::name }, { "dates", &Person::dates } } }
+    formatter() : struct_formatter<Person>{ { { &Person::name, "name" }, { &Person::dates, "dates" } } }
     {
     }
 };
@@ -30,25 +30,23 @@ int main()
 
     static const auto ordered_list = [](context_t& ctx, const list_state_t& list_state)
     {
-        ctx.write_text(mb_string("\n"));
-        ctx.write_text(mb_string(std::string(2 * list_state.size(), ' ')));
+        ctx.new_line();
+        ctx.indent();
+        write(ctx, std::string(2 * list_state.size(), ' '));
 
         for (std::size_t level : list_state)
         {
-            ctx.write_text(mb_string(std::to_string(level + 1)));
-            ctx.write_text(mb_string("."));
+            write(ctx, level + 1, ".");
         }
-        ctx.write_text(mb_string(" "));
+        write(ctx, " ");
     };
 
     static const auto unordered_list = [](mb_string bullet)
     {
         return [=](context_t& ctx, const list_state_t& list_state)
         {
-            ctx.write_text(mb_string("\n"));
-            ctx.write_text(mb_string(std::string(2 * list_state.size(), ' ')));
-            ctx.write_text(bullet);
-            ctx.write_text(mb_string(" "));
+            ctx.new_line();
+            write(ctx, std::string(2 * list_state.size(), ' '), bullet, " ");
         };
     };
 
@@ -65,9 +63,11 @@ int main()
 
     auto ctx = default_context_t{ std::cout, get_list_item_formatter };
 
-    const auto persons = std::vector{ Person{ "Fryderyk", { 1810, 1849 } }, Person{ "Juliusz", { 1809, 1849 } } };
-    ctx << text("{}\n", persons);
-    ctx << text("{}\n", std::tuple{ 2.3, 123, "ABC" });
+    const auto persons = std::vector{ Person{ "Fryderyk", { 1810, 1849 } },
+                                      Person{ "Juliusz", { 1809, 1849 } },
+                                      Person{ "Adam", { 1798, 1855 } } };
+
+    ctx << text("range: {}\ntuple: {}\n", persons, std::tuple{ 2.3, 123, "ABC" });
 
     ctx << block(
         fg["00FFFF"]("Europe"),  //

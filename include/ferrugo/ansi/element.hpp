@@ -74,14 +74,14 @@ struct list_fn
     {
         return element_t{ [=](context_t& ctx)
                           {
-                              ctx.push_list();
+                              ctx.on_list_start();
                               for (const element_t& child : children)
                               {
-                                  ctx.start_list_item();
+                                  ctx.on_list_item_start();
                                   child(ctx);
-                                  ctx.end_list_item();
+                                  ctx.on_list_item_end();
                               }
-                              ctx.pop_list();
+                              ctx.on_list_end();
                           } };
     }
 
@@ -105,8 +105,14 @@ struct style_applier_fn
     {
         return element_t{ [=, *this](context_t& ctx)
                           {
-                              style_t new_style = ctx.get_current_style();
-                              m_modifier(new_style);
+                              const style_t new_style = std::invoke(
+                                  [&]() -> style_t
+                                  {
+                                      style_t res = ctx.get_current_style();
+                                      m_modifier(res);
+                                      return res;
+                                  });
+
                               ctx.push_style(new_style);
                               for (const element_t& child : children)
                               {

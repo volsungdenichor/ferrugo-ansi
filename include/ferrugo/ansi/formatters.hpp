@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ferrugo/ansi/format.hpp>
+#include <ferrugo/core/demangle.hpp>
 #include <sstream>
 #include <tuple>
 #include <vector>
@@ -128,6 +129,19 @@ struct formatter<std::string>
 };
 
 template <>
+struct formatter<mb_string>
+{
+    void parse(const parse_context&)
+    {
+    }
+
+    void format(context_t& ctx, const mb_string& item) const
+    {
+        ctx.write_text(item);
+    }
+};
+
+template <>
 struct formatter<std::string_view>
 {
     void parse(const parse_context&)
@@ -186,13 +200,13 @@ struct struct_formatter
     {
         using field_formatter_fn = std::function<void(context_t&, const T&)>;
 
-        std::string_view name;
         field_formatter_fn field_formater;
+        std::string_view name;
 
         template <class Type>
-        field_info(std::string_view name, Type T::*field)
-            : name{ name }
-            , field_formater{ [=](context_t& ctx, const T& item) { write(ctx, item.*field); } }
+        field_info(Type T::*field, std::string_view name)
+            : field_formater{ [=](context_t& ctx, const T& item) { write(ctx, item.*field); } }
+            , name{ name }
         {
         }
     };
@@ -201,20 +215,43 @@ struct struct_formatter
     {
     }
 
+    struct_formatter(std::vector<field_info> fields) : struct_formatter{ core::type_name<T>(), std::move(fields) }
+    {
+    }
+
     void parse(const parse_context& ctx)
     {
     }
 
     void format(context_t& ctx, const T& item) const
     {
-        write(ctx, "(", m_name, " ");
-        for (const field_info& field : m_fields)
+        static const bool show_field_names = true;
+        if (show_field_names)
         {
-            write(ctx, "(", field.name, " ");
-            field.field_formater(ctx, item);
+            write(ctx, "(", m_name, " ");
+            for (const field_info& field : m_fields)
+            {
+                write(ctx, "(", field.name, " ");
+                field.field_formater(ctx, item);
+                write(ctx, ")");
+            }
             write(ctx, ")");
         }
-        write(ctx, ")");
+        else
+        {
+            const auto begin = std::begin(m_fields);
+            const auto end = std::end(m_fields);
+            write(ctx, "(");
+            for (auto f = begin; f != end; ++f)
+            {
+                if (f != begin)
+                {
+                    write(ctx, " ");
+                }
+                f->field_formater(ctx, item);
+            }
+            write(ctx, ")");
+        }
     }
 
     std::string_view m_name;
@@ -223,6 +260,10 @@ struct struct_formatter
 
 struct range_formatter
 {
+    std::string m_opening_char = "[";
+    std::string m_closing_char = "]";
+    std::string m_separator = " ";
+
     void parse(const parse_context& ctx)
     {
     }
@@ -230,7 +271,7 @@ struct range_formatter
     template <class T>
     void format(context_t& ctx, const T& item) const
     {
-        write(ctx, "[");
+        write(ctx, m_opening_char);
         auto it = std::begin(item);
         const auto end = std::end(item);
         if (it != end)
@@ -239,10 +280,10 @@ struct range_formatter
         }
         for (; it != end; ++it)
         {
-            write(ctx, " ");
+            write(ctx, m_separator);
             write(ctx, *it);
         }
-        write(ctx, "]");
+        write(ctx, m_closing_char);
     }
 };
 

@@ -20,12 +20,6 @@ struct format_error : std::runtime_error
 template <class T, class = void>
 struct formatter;
 
-template <class... Args>
-void write(context_t& format_ctx, const Args&... args)
-{
-    (formatter<Args>{}.format(format_ctx, args), ...);
-}
-
 class parse_context
 {
 public:
@@ -41,6 +35,25 @@ public:
 private:
     std::string_view m_specifier;
 };
+
+template <class Head, class... Tail>
+void write(const parse_context& parse_ctx, context_t& format_ctx, const Head& head, const Tail&... tail)
+{
+    formatter<Head> f = {};
+    f.parse(parse_ctx);
+    f.format(format_ctx, head);
+
+    if constexpr (sizeof...(tail) > 0)
+    {
+        write(parse_ctx, format_ctx, tail...);
+    }
+}
+
+template <class... Args>
+void write(context_t& format_ctx, const Args&... args)
+{
+    write(parse_context{ "" }, format_ctx, args...);
+}
 
 struct arg_ref
 {
@@ -101,7 +114,7 @@ private:
 
         void operator()(const print_text& arg) const
         {
-            m_ctx.write_text(mb_string(arg.text));
+            write(m_ctx, arg.text);
         }
 
         void operator()(const print_argument& arg) const
@@ -163,6 +176,7 @@ private:
         static const auto is_closing_bracket = [](char c) { return c == '}'; };
         static const auto is_bracket = [](char c) { return is_opening_bracket(c) || is_closing_bracket(c); };
         static const auto is_colon = [](char c) { return c == ':'; };
+
         std::vector<print_action> result;
         int arg_index = 0;
         while (!fmt.empty())

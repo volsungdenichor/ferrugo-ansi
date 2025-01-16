@@ -33,7 +33,7 @@ public:
 
     void push_style(const style_t& style) override
     {
-        const auto current_style = get_current_style();
+        const style_t current_style = get_current_style();
         m_style_stack.push_back(style);
         change_style(current_style, style);
     }
@@ -41,9 +41,9 @@ public:
     void pop_style() override
     {
         assert(m_style_stack.size() >= 2);
-        const auto current_style = get_current_style();
+        const style_t current_style = get_current_style();
         m_style_stack.pop_back();
-        const auto prev_style = m_style_stack.back();
+        const style_t prev_style = m_style_stack.back();
         change_style(current_style, prev_style);
     }
 
@@ -52,23 +52,36 @@ public:
         *m_os << text;
     }
 
-    void push_list() override
+    void indent() override
+    {
+    }
+
+    void unindent() override
+    {
+    }
+
+    void new_line() override
+    {
+        write_text(mb_string("\n"));
+    }
+
+    void on_list_start() override
     {
         m_list_state.push_back(0);
     }
 
-    void pop_list() override
+    void on_list_end() override
     {
         m_list_state.pop_back();
     }
 
-    void start_list_item() override
+    void on_list_item_start() override
     {
         const list_item_formatter_t formatter = m_list_item_formatter_factory(m_list_state.size());
         formatter(*this, m_list_state);
     }
 
-    void end_list_item() override
+    void on_list_item_end() override
     {
         ++m_list_state.back();
     }
