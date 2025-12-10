@@ -1,7 +1,5 @@
-#include <ferrugo/ansi/default_context.hpp>
-#include <ferrugo/ansi/element.hpp>
-#include <ferrugo/ansi/format.hpp>
-#include <ferrugo/ansi/formatters.hpp>
+#include <ferrugo/ansi3/font_style.hpp>
+#include <ferrugo/ansi3/stream.hpp>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -10,91 +8,223 @@
 #include <optional>
 #include <string>
 
-struct Person
+template <int Base>
+struct color_visitor_t
 {
-    std::string name;
-    std::vector<int> dates;
-};
-
-template <>
-struct ferrugo::ansi::formatter<Person> : ferrugo::ansi::struct_formatter<Person>
-{
-    formatter() : struct_formatter<Person>{ { { &Person::name, "name" }, { &Person::dates, "dates" } } }
+    auto operator()(default_color_t) const -> std::vector<int>
     {
+        return { Base + 39 };
+    }
+
+    auto operator()(standard_color_t col) const -> std::vector<int>
+    {
+        return { Base + 30 + static_cast<int>(col.m_color) };
+    }
+
+    auto operator()(bright_color_t col) const -> std::vector<int>
+    {
+        return { Base + 90 + static_cast<int>(col.m_color) };
+    }
+
+    auto operator()(palette_color_t col) const -> std::vector<int>
+    {
+        return { Base + 38, 5, col.m_index };
+    }
+
+    auto operator()(rgb_color_t col) const -> std::vector<int>
+    {
+        return { Base + 38, 2, col[0], col[1], col[2] };
     }
 };
 
+inline void write_args(std::ostream& os, const std::vector<int>& args)
+{
+    os << "\033[";
+    for (std::size_t i = 0; i < args.size(); ++i)
+    {
+        if (i != 0)
+        {
+            os << ";";
+        }
+        os << args[i];
+    }
+    os << "m";
+}
+
+inline std::string write_args(const std::vector<int>& args)
+{
+    std::stringstream ss;
+    write_args(ss, args);
+    return ss.str();
+}
+
+inline std::string change_style(const font_style_t& old_style, const font_style_t& new_style)
+{
+    std::stringstream ss;
+    if (old_style.foreground != new_style.foreground)
+    {
+        write_args(ss, std::visit(color_visitor_t<0>{}, new_style.foreground.m_data));
+    }
+    if (old_style.background != new_style.background)
+    {
+        write_args(ss, std::visit(color_visitor_t<10>{}, new_style.background.m_data));
+    }
+    if (old_style.font != new_style.font)
+    {
+        static const std::vector<std::pair<font_t, int>> set_map = {
+            { font_t::bold, 1 },      { font_t::dim, 2 },         { font_t::italic, 3 },
+            { font_t::underline, 4 }, { font_t::blink, 5 },       { font_t::inverse, 7 },
+            { font_t::hidden, 8 },    { font_t::crossed_out, 9 }, { font_t::double_underline, 21 },
+        };
+        std::vector<int> args = { 22, 23, 24, 25, 27, 28, 29 };
+        for (const auto& [f, v] : set_map)
+        {
+            if (new_style.font.contains(f))
+            {
+                args.push_back(v);
+            }
+        }
+        write_args(ss, args);
+    }
+    return ss.str();
+}
+
+inline void render(std::ostream& out, const stream_t& stream)
+{
+    struct context_t
+    {
+        std::ostream& os;
+        int indent_level = 0;
+        bool new_line = false;
+        std::vector<font_style_t> style_stack = { font_style_t{} };
+    };
+
+    struct visitor_t
+    {
+        context_t& m_ctx;
+
+        void operator()(new_line_t) const
+        {
+            m_ctx.new_line = true;
+        }
+
+        void operator()(indent_t) const
+        {
+            m_ctx.indent_level += 1;
+        }
+
+        void operator()(unindent_t) const
+        {
+            m_ctx.indent_level = std::max(0, m_ctx.indent_level - 1);
+        }
+
+        void operator()(const text_t& v) const
+        {
+            handle_indent();
+            m_ctx.os << v.content;
+        }
+
+        void operator()(const text_ref_t& v) const
+        {
+            handle_indent();
+            m_ctx.os << v.content;
+        }
+
+        void operator()(const push_style_t& v) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            m_ctx.style_stack.push_back(v.style);
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void operator()(pop_style_t) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            m_ctx.style_stack.pop_back();
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void handle_indent() const
+        {
+            if (m_ctx.new_line)
+            {
+                m_ctx.os << write_args({ 0 });
+                m_ctx.os << "\n" << std::string(m_ctx.indent_level * 2, ' ');
+                m_ctx.new_line = false;
+                m_ctx.os << change_style({}, m_ctx.style_stack.back());
+            }
+        }
+    };
+
+    context_t context{ out, 0, false };
+    for (const auto& op : stream.m_ops)
+    {
+        std::visit(visitor_t{ context }, op);
+    }
+    if (context.new_line)
+    {
+        out << "\n";
+    }
+}
+
+constexpr inline auto styled = [](font_style_t style)
+{
+    return [style](auto&&... ops) -> stream_t
+    {
+        stream_t stream;
+        stream << push_style(style);
+        (stream << ... << std::forward<decltype(ops)>(ops));
+        stream << pop_style;
+        return stream;
+    };
+};
+
+template <class Func, class Range>
+constexpr inline auto map(Func&& func, Range&& range) -> stream_t
+{
+    stream_t stream;
+    for (auto&& item : range)
+    {
+        stream << func(std::forward<decltype(item)>(item));
+    }
+    return stream;
+}
+
 int main()
 {
-    using namespace ferrugo::ansi;
+    stream_t stream;
+    const std::string name = "example.txt";
+    const auto braces = styled({ basic_color_t::cyan, basic_color_t::yellow, font_t::bold });
+    const auto underlined_text = styled({ palette_color_t::from_grayscale(12), {}, font_t::underline });
+    const auto red_style = styled({ bright_color_t{ basic_color_t::white }, basic_color_t::red, font_t::underline });
+    const auto green_style = styled({ basic_color_t::green, {}, font_t::bold });
 
-    static const auto ordered_list = [](context_t& ctx, const list_state_t& list_state)
+    const auto get_style = [](int v) -> font_style_t
     {
-        ctx.new_line();
-        ctx.indent();
-        write(ctx, std::string(2 * list_state.size(), ' '));
-
-        for (std::size_t level : list_state)
+        if (v < 20)
         {
-            write(ctx, level + 1, ".");
+            return font_style_t{ bright_color_t{ basic_color_t::green }, {}, {} };
         }
-        write(ctx, " ");
-    };
-
-    static const auto unordered_list = [](mb_string bullet)
-    {
-        return [=](context_t& ctx, const list_state_t& list_state)
+        if (v > 80)
         {
-            ctx.new_line();
-            write(ctx, std::string(2 * list_state.size(), ' '), bullet, " ");
-        };
-    };
-
-    static const list_item_formatter_factory_t get_list_item_formatter = [](std::size_t level) -> list_item_formatter_t
-    {
-        switch (level)
-        {
-            case 0:
-            case 1: return ordered_list;
-            case 2: return unordered_list(mb_string("🔶"));
-            default: return unordered_list(mb_string("◻️"));
+            return font_style_t{ basic_color_t::red, {}, font_t::bold };
         }
+        return font_style_t{};
     };
 
-    auto ctx = default_context_t{ std::cout, get_list_item_formatter };
+    const auto render_item = [&](int v) -> stream_t { return styled(get_style(v))(line("- Item: ", v)); };
 
-    const auto persons = std::vector{ Person{ "Fryderyk", { 1810, 1849 } },
-                                      Person{ "Juliusz", { 1809, 1849 } },
-                                      Person{ "Adam", { 1798, 1855 } } };
-
-    ctx << text("range: {}\ntuple: {}\n", persons, std::tuple{ 2.3, 123, "ABC" });
-
-    ctx << block(
-        fg["00FFFF"]("Europe"),  //
-        list(                    //
-            "Germany",
-            "France",
-            block(  //
-                fg["00FF00"]("Poland"),
-                list(  //
-                    "Warsaw",
-                    block(  //
-                        "Kraków",
-                        list(  //
-                            "Stare Miasto",
-                            "Zwierzyniec",
-                            "Kleparz",
-                            "Grzegórzki",
-                            "Podgórze",
-                            "Nowa Huta")),
-                    block(  //
-                        fg["FF0000"]("Wrocław"),
-                        list(  //
-                            "Stare Miasto",
-                            "Śródmieście",
-                            "Fabryczna",
-                            "Krzyki",
-                            "Psie Pole"))))))
-        << text("\nAla ma {} kota oraz {} psa.", 1.5, "kosmatego");
-    std::cout << "\n";
+    stream << indented(
+        line(":file ", name),
+        red_style(line(":size ", 12345)),
+        green_style(line(":lines ", 100)),
+        indented(
+            line("This is an indented block."),
+            line("It has multiple lines."),
+            underlined_text(indented(line("This is a nested ", "indented", " block."), line("It is further indented."))),
+            line("Back to the first indented block.")),
+        line("End of file metadata."))
+           << braces(line("}")) << map(render_item, std::vector<int>{ 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 });
+    // std::cout << stream << std::endl;
+    render(std::cout, stream);
 }
