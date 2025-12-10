@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <variant>
@@ -454,3 +455,43 @@ struct font_style_t
                   << "}";
     }
 };
+
+struct font_style_applier_t : public std::function<void(font_style_t&)>
+{
+    using base_t = std::function<void(font_style_t&)>;
+
+    using base_t::base_t;
+};
+
+inline auto operator|(font_style_applier_t lhs, font_style_applier_t rhs) -> font_style_applier_t
+{
+    return [=](font_style_t& style)
+    {
+        lhs(style);
+        rhs(style);
+    };
+}
+
+inline auto fg(color_t col) -> font_style_applier_t
+{
+    return [=](font_style_t& style) { style.foreground = col; };
+}
+
+inline auto bg(color_t col) -> font_style_applier_t
+{
+    return [=](font_style_t& style) { style.background = col; };
+}
+
+inline auto font(font_t font) -> font_style_applier_t
+{
+    return [=](font_style_t& style) { style.font = font; };
+}
+
+static const inline auto bold = font(font_t::bold);
+static const inline auto italic = font(font_t::italic);
+static const inline auto underline = font(font_t::underline);
+static const inline auto dim = font(font_t::dim);
+static const inline auto inverse = font(font_t::inverse);
+static const inline auto crossed_out = font(font_t::crossed_out);
+static const inline auto blink = font(font_t::blink);
+static const inline auto hidden = font(font_t::hidden);

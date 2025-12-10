@@ -137,6 +137,15 @@ inline void render(std::ostream& out, const stream_t& stream)
             m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
         }
 
+        void operator()(const modify_style_t& v) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            font_style_t new_style = previous_style;
+            v.applier(new_style);
+            m_ctx.style_stack.push_back(new_style);
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
         void operator()(pop_style_t) const
         {
             const font_style_t previous_style = m_ctx.style_stack.back();
@@ -167,12 +176,24 @@ inline void render(std::ostream& out, const stream_t& stream)
     }
 }
 
-constexpr inline auto styled = [](font_style_t style)
+constexpr inline auto set_style = [](font_style_t style)
 {
     return [style](auto&&... ops) -> stream_t
     {
         stream_t stream;
         stream << push_style(style);
+        (stream << ... << std::forward<decltype(ops)>(ops));
+        stream << pop_style;
+        return stream;
+    };
+};
+
+constexpr inline auto add_style = [](font_style_applier_t applier)
+{
+    return [applier](auto&&... ops) -> stream_t
+    {
+        stream_t stream;
+        stream << modify_style(applier);
         (stream << ... << std::forward<decltype(ops)>(ops));
         stream << pop_style;
         return stream;
@@ -190,18 +211,22 @@ constexpr inline auto map(Func&& func, Range&& range) -> stream_t
     return stream;
 }
 
+constexpr inline auto quoted = [](std::string_view text) -> stream_t {
+    return set_style({ bright_color_t{ basic_color_t::yellow }, {}, font_t::italic })(line("\"", text, "\""));
+};
+
 int main()
 {
     stream_t stream;
     const std::string name = "example.txt";
-    const auto braces = styled({ basic_color_t::cyan, basic_color_t::yellow, font_t::bold });
-    const auto underlined_text = styled({ palette_color_t::from_grayscale(12), {}, font_t::underline });
-    const auto red_style = styled({ bright_color_t{ basic_color_t::white }, basic_color_t::red, font_t::underline });
-    const auto green_style = styled({ basic_color_t::green, {}, font_t::bold });
+    const auto braces = set_style({ basic_color_t::cyan, basic_color_t::yellow, font_t::bold });
+    const auto underlined_text = set_style({ palette_color_t::from_grayscale(12), {}, font_t::underline });
+    const auto red_style = set_style({ bright_color_t{ basic_color_t::white }, basic_color_t::red, font_t::underline });
+    const auto green_style = set_style({ basic_color_t::green, {}, font_t::bold });
 
     const auto get_style = [](int v) -> font_style_t
     {
-        if (v < 20)
+        if (v < 40)
         {
             return font_style_t{ bright_color_t{ basic_color_t::green }, {}, {} };
         }
@@ -212,19 +237,21 @@ int main()
         return font_style_t{};
     };
 
-    const auto render_item = [&](int v) -> stream_t { return styled(get_style(v))(line("- Item: ", v)); };
+    const auto render_item = [&](int v) -> stream_t { return set_style(get_style(v))(line("⦿ Item: ", v)); };
 
-    stream << indented(
-        line(":file ", name),
-        red_style(line(":size ", 12345)),
-        green_style(line(":lines ", 100)),
-        indented(
-            line("This is an indented block."),
-            line("It has multiple lines."),
-            underlined_text(indented(line("This is a nested ", "indented", " block."), line("It is further indented."))),
-            line("Back to the first indented block.")),
-        line("End of file metadata."))
-           << braces(line("}")) << map(render_item, std::vector<int>{ 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 });
+    stream << braces(line("{"))
+           << indented(
+                  line(":file ", name),
+                  red_style(line(":size ", 12345)),
+                  green_style(line(":lines ", 100)),
+                  indented(
+                      line(quoted("This is an indented block.")),
+                      line("It has multiple lines."),
+                      underlined_text(
+                          indented(line("This is a nested ", "indented", " block."), line("It is further indented."))),
+                      line("Back to the first indented block.")),
+                  line("End of file metadata."))
+           << braces(line("}")) << map(render_item, std::vector<int>{ 10, 90, 20, 30, 100, 0, 30, 80 });
     // std::cout << stream << std::endl;
     render(std::cout, stream);
 }
