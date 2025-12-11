@@ -26,6 +26,25 @@ auto fmt(const T& value) -> ansi::stream_t
     }
 }
 
+template <class K, class V>
+auto fmt(const std::map<K, V>& m) -> ansi::stream_t
+{
+    ansi::stream_t stream;
+
+    stream << ansi::line("{");
+
+    stream << ansi::indent;
+
+    for (const auto& [key, value] : m)
+    {
+        stream << ansi::line(fmt(key), ": ", fmt(value));
+    }
+
+    stream << ansi::unindent;
+    stream << ansi::line("}");
+    return stream;
+}
+
 constexpr inline struct eq_fn
 {
     template <class T>
@@ -83,7 +102,10 @@ int main()
     const auto render_item
         = [&](int v) -> ansi::stream_t { return ansi::set_style(get_style(v))(ansi::line("* Item: ", v)); };
 
-    stream << braces(ansi::line("{"))
+    stream << braces(ansi::line("{")) << ansi::line(std::vector<bool>{ true, false })
+           << ansi::line(std::tuple{ 1, 2.5, "three" }) << ansi::line(std::pair{ 2.5, 'x' })
+           << fmt(std::map<std::string, std::map<std::string, int>>{ { "first", { { "a", 1 }, { "b", 2 } } },
+                                                                     { "second", { { "c", 3 }, { "d", 4 } } } })
            << ansi::indented(
                   ansi::line(":file ", name),
                   red_style(ansi::line(":size ", 12345)),

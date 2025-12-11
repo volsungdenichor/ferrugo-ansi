@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -880,9 +881,45 @@ struct ostream_formatter_t
     }
 };
 
+struct tuple_formatter_t
+{
+    template <class T>
+    void format(stream_t& stream, const T& item) const
+    {
+        std::apply(
+            [&](const auto&... elems)
+            {
+                stream << "(";
+                int n = 0;
+                ((stream << (n++ ? ", " : "") << elems), ...);
+                stream << ")";
+            },
+            item);
+    }
+};
+
+template <class... Ts>
+struct formatter_t<std::tuple<Ts...>> : tuple_formatter_t
+{
+};
+
+template <class F, class S>
+struct formatter_t<std::pair<F, S>> : tuple_formatter_t
+{
+};
+
 template <class T>
 struct formatter_t : ostream_formatter_t
 {
+};
+
+template <>
+struct formatter_t<bool>
+{
+    void format(stream_t& stream, bool item) const
+    {
+        stream << (item ? "true" : "false");
+    }
 };
 
 template <std::size_t N>
