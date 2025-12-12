@@ -86,7 +86,7 @@ struct standard_color_t
 
     friend std::ostream& operator<<(std::ostream& os, const standard_color_t item)
     {
-        return os << "(standard_color " << item.m_color << ")";
+        return os << "{:standard_color " << item.m_color << "}";
     }
 };
 
@@ -110,7 +110,7 @@ struct bright_color_t
 
     friend std::ostream& operator<<(std::ostream& os, const bright_color_t item)
     {
-        return os << "(bright_color " << item.m_color << ")";
+        return os << "{:bright_color " << item.m_color << "}";
     }
 };
 
@@ -138,9 +138,9 @@ struct rgb_color_t : public std::array<std::uint8_t, 3>
 
     friend std::ostream& operator<<(std::ostream& os, const rgb_color_t& item)
     {
-        return os << "(rgb_color "  //
+        return os << "{:rgb_color ["  //
                   << static_cast<int>(item[0]) << " " << static_cast<int>(item[1]) << " " << static_cast<int>(item[2])
-                  << ")";
+                  << "]}";
     }
 
 private:
@@ -232,7 +232,7 @@ struct palette_color_t
 
     friend std::ostream& operator<<(std::ostream& os, const palette_color_t item)
     {
-        return os << "(palette_color " << static_cast<int>(item.m_index) << ")";
+        return os << "{:palette_color " << static_cast<int>(item.m_index) << "}";
     }
 };
 
@@ -425,11 +425,18 @@ struct font_t
             { font_t::double_underline, "double_underline" },
         };
         os << "[";
+
+        bool first = true;
         for (const auto& [f, n] : map)
         {
+            if (!first)
+            {
+                os << " ";
+            }
             if (item.contains(f))
             {
-                os << " " << n;
+                os << n;
+                first = true;
             }
         }
         os << "]";
@@ -693,91 +700,104 @@ struct render_fn
         return ss.str();
     }
 
-    void operator()(std::ostream& out, const stream_t& stream) const
+    struct context_t
     {
-        struct context_t
+        std::ostream& os;
+        int indent_level = 0;
+        bool new_line = false;
+        std::vector<font_style_t> style_stack = { font_style_t{} };
+    };
+
+    struct visitor_t
+    {
+        context_t& m_ctx;
+
+        void operator()(op_new_line_t) const
         {
-            std::ostream& os;
-            int indent_level = 0;
-            bool new_line = false;
-            std::vector<font_style_t> style_stack = { font_style_t{} };
-        };
-
-        struct visitor_t
-        {
-            context_t& m_ctx;
-
-            void operator()(op_new_line_t) const
-            {
-                m_ctx.new_line = true;
-            }
-
-            void operator()(op_indent_t) const
-            {
-                m_ctx.indent_level += 1;
-            }
-
-            void operator()(op_unindent_t) const
-            {
-                m_ctx.indent_level = std::max(0, m_ctx.indent_level - 1);
-            }
-
-            void operator()(const op_text_t& v) const
-            {
-                handle_indent();
-                m_ctx.os << v.content;
-            }
-
-            void operator()(const op_text_ref_t& v) const
-            {
-                handle_indent();
-                m_ctx.os << v.content;
-            }
-
-            void operator()(const op_push_style_t& v) const
-            {
-                const font_style_t previous_style = m_ctx.style_stack.back();
-                m_ctx.style_stack.push_back(v.style);
-                m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
-            }
-
-            void operator()(const op_modify_style_t& v) const
-            {
-                const font_style_t previous_style = m_ctx.style_stack.back();
-                font_style_t new_style = previous_style;
-                v.applier(new_style);
-                m_ctx.style_stack.push_back(new_style);
-                m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
-            }
-
-            void operator()(op_pop_style_t) const
-            {
-                const font_style_t previous_style = m_ctx.style_stack.back();
-                m_ctx.style_stack.pop_back();
-                m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
-            }
-
-            void handle_indent() const
-            {
-                if (m_ctx.new_line)
-                {
-                    m_ctx.os << write_args({ 0 });
-                    m_ctx.os << "\n" << std::string(m_ctx.indent_level * 2, ' ');
-                    m_ctx.new_line = false;
-                    m_ctx.os << change_style({}, m_ctx.style_stack.back());
-                }
-            }
-        };
-
-        context_t context{ out, 0, false };
-        for (const auto& op : stream.m_ops)
-        {
-            std::visit(visitor_t{ context }, op);
+            m_ctx.new_line = true;
         }
-        if (context.new_line)
+
+        void operator()(op_indent_t) const
         {
-            out << "\n";
+            m_ctx.indent_level += 1;
         }
+
+        void operator()(op_unindent_t) const
+        {
+            m_ctx.indent_level = std::max(0, m_ctx.indent_level - 1);
+        }
+
+        void operator()(const op_text_t& v) const
+        {
+            handle_indent();
+            m_ctx.os << v.content;
+        }
+
+        void operator()(const op_text_ref_t& v) const
+        {
+            handle_indent();
+            m_ctx.os << v.content;
+        }
+
+        void operator()(const op_push_style_t& v) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            m_ctx.style_stack.push_back(v.style);
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void operator()(const op_modify_style_t& v) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            font_style_t new_style = previous_style;
+            v.applier(new_style);
+            m_ctx.style_stack.push_back(new_style);
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void operator()(op_pop_style_t) const
+        {
+            const font_style_t previous_style = m_ctx.style_stack.back();
+            m_ctx.style_stack.pop_back();
+            m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void handle_indent() const
+        {
+            if (m_ctx.new_line)
+            {
+                m_ctx.os << write_args({ 0 });
+                m_ctx.os << "\n" << std::string(m_ctx.indent_level * 2, ' ');
+                m_ctx.new_line = false;
+                m_ctx.os << change_style({}, m_ctx.style_stack.back());
+            }
+        }
+    };
+
+    struct impl_t
+    {
+        mutable context_t m_ctx;
+
+        impl_t(std::ostream& out) : m_ctx{ out, 0, false }
+        {
+        }
+
+        void operator()(const stream_t& stream) const
+        {
+            for (const auto& op : stream.m_ops)
+            {
+                std::visit(visitor_t{ m_ctx }, op);
+            }
+            if (m_ctx.new_line)
+            {
+                m_ctx.os << "\n";
+            }
+        }
+    };
+
+    auto operator()(std::ostream& out) const -> impl_t
+    {
+        return impl_t{ out };
     }
 };
 

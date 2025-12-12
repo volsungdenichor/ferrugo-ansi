@@ -76,6 +76,15 @@ constexpr inline struct eq_fn
     }
 } eq{};
 
+template <class... Ts>
+struct overloaded : Ts...
+{
+    using Ts::operator()...;
+};
+
+template <class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 int main()
 {
     ansi::stream_t stream;
@@ -102,6 +111,10 @@ int main()
     const auto render_item
         = [&](int v) -> ansi::stream_t { return ansi::set_style(get_style(v))(ansi::line("* Item: ", v)); };
 
+    std::stringstream ss;
+
+    ss << "\033[2J\033[H";
+
     stream << braces(ansi::line("{")) << ansi::line(std::vector<bool>{ true, false })
            << ansi::line(std::tuple{ 1, 2.5, "three" }) << ansi::line(std::pair{ 2.5, 'x' })
            << fmt(std::map<std::string, std::map<std::string, int>>{ { "first", { { "a", 1 }, { "b", 2 } } },
@@ -120,6 +133,7 @@ int main()
                   ansi::line("End of file metadata."))
            << braces(ansi::line("}")) << ansi::map(render_item, std::vector<int>{ 10, 90, 20, 30, 100, 0, 30, 80 });
 
+#if 1
     for (int r = 0; r < 6; ++r)
     {
         for (int g = 0; g < 6; ++g)
@@ -133,12 +147,48 @@ int main()
         stream << ansi::new_line;
     }
 
+    const auto n = 6;
+    for (int r = 0; r < n; ++r)
+    {
+        for (int g = 0; g < n; ++g)
+        {
+            for (int b = 0; b < n; ++b)
+            {
+                stream << ansi::set_style({ {}, ansi::rgb_color_t(r * 256 / n, g * 256 / n, b * 256 / n), {} })(
+                    ansi::text("  "));
+            }
+            stream << ansi::text(" ");
+        }
+        stream << ansi::new_line;
+    }
+#endif
+
     const auto matcher = eq(42);
 
     for (int i : { 10, 42, 100 })
     {
         stream << matcher(i) << ansi::new_line;
     }
-    // std::cout << stream << std::endl;
-    ansi::render(std::cout, stream);
+
+    ansi::render(ss)(stream);
+
+    for (const auto& op : stream.m_ops)
+    {
+        std::visit(
+            overloaded{
+                [](ansi::op_new_line_t) { std::cout << "NewLine"; },
+                [](ansi::op_indent_t) { std::cout << "Indent"; },
+                [](ansi::op_unindent_t) { std::cout << "Unindent"; },
+                [](const ansi::op_text_t& v) { std::cout << "Text: " << v.content; },
+                [](const ansi::op_text_ref_t& v) { std::cout << "TextRef: " << v.content; },
+                [](const ansi::op_push_style_t& v) { std::cout << "PushStyle: " << v.style; },
+                [](const ansi::op_modify_style_t& v) { std::cout << "ModifyStyle"; },
+                [](ansi::op_pop_style_t) { std::cout << "PopStyle"; },
+            },
+            op);
+        std::cout << "\n";
+    }
+
+    std::cout << ss.str() << std::flush;
+    return 0;
 }
