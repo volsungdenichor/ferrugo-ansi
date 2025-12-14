@@ -16,6 +16,15 @@
 namespace ansi
 {
 
+template <class T>
+struct remove_cvref
+{
+    using type = std::remove_cv_t<std::remove_reference_t<T>>;
+};
+
+template <class T>
+using remove_cvref_t = typename remove_cvref<T>::type;
+
 enum class basic_color_t
 {
     black,
@@ -501,6 +510,32 @@ inline auto font(font_t font) -> font_style_applier_t
     return [=](font_style_t& style) { style.font |= font; };
 }
 
+enum class direction_t
+{
+    up,
+    down,
+    forward,
+    backward,
+    next_line,
+    prev_line,
+    column
+};
+
+enum class clear_screen_mode_t
+{
+    full,
+    to_end,
+    to_begin,
+    scrollback
+};
+
+enum class clear_line_mode_t
+{
+    full,
+    to_end,
+    to_begin
+};
+
 struct op_new_line_t
 {
 };
@@ -537,6 +572,33 @@ struct op_pop_style_t
 {
 };
 
+struct op_move_cursor
+{
+    direction_t direction;
+    int value;
+};
+
+struct op_move_cursor_to
+{
+    int row;
+    int column;
+};
+
+struct op_clear_screen
+{
+    clear_screen_mode_t mode;
+};
+
+struct op_clear_line
+{
+    clear_line_mode_t mode;
+};
+
+struct op_set_cursor_visibility
+{
+    bool value;
+};
+
 using stream_op_t = std::variant<  //
     op_new_line_t,
     op_indent_t,
@@ -545,7 +607,12 @@ using stream_op_t = std::variant<  //
     op_text_ref_t,
     op_push_style_t,
     op_modify_style_t,
-    op_pop_style_t>;
+    op_pop_style_t,
+    op_move_cursor,
+    op_move_cursor_to,
+    op_clear_screen,
+    op_clear_line,
+    op_set_cursor_visibility>;
 
 constexpr inline auto new_line = op_new_line_t{};
 
@@ -561,6 +628,15 @@ constexpr inline auto push_style = [](font_style_t style) { return op_push_style
 constexpr inline auto modify_style = [](font_style_applier_t applier) { return op_modify_style_t{ std::move(applier) }; };
 
 constexpr inline auto pop_style = op_pop_style_t{};
+
+constexpr inline auto move_cursor = [](direction_t direction, int value) { return op_move_cursor{ direction, value }; };
+constexpr inline auto move_cursor_to = [](int row = 1, int column = 1) { return op_move_cursor_to{ row, column }; };
+
+constexpr inline auto clear_screen
+    = [](clear_screen_mode_t mode = clear_screen_mode_t::full) { return op_clear_screen{ mode }; };
+constexpr inline auto clear_line = [](clear_line_mode_t mode = clear_line_mode_t::full) { return op_clear_line{ mode }; };
+
+constexpr inline auto set_cursor_visibility = [](bool value) { return op_set_cursor_visibility{ value }; };
 
 template <class T>
 struct formatter_t;
@@ -586,19 +662,19 @@ struct stream_t
     }
 
     template <class T>
-    stream_t& operator<<(const T& item)
+    stream_t& operator<<(T&& item)
     {
         if constexpr (std::is_constructible_v<stream_op_t, T>)
         {
-            m_ops.push_back(item);
+            m_ops.push_back(std::forward<T>(item));
         }
         else if constexpr (std::is_invocable_v<T, stream_t&>)
         {
-            std::invoke(item, *this);
+            std::invoke(std::forward<T>(item), *this);
         }
         else
         {
-            formatter_t<T>{}.format(*this, item);
+            formatter_t<remove_cvref_t<T>>{}.format(*this, std::forward<T>(item));
         }
         return *this;
     }
@@ -615,6 +691,13 @@ template <class... Args>
 stream_t& format_to(stream_t& stream, Args&&... args)
 {
     return stream(std::forward<Args>(args)...);
+}
+
+template <class... Args>
+stream_t format(Args&&... args)
+{
+    stream_t stream;
+    return format_to(stream, std::forward<Args>(args)...);
 }
 
 struct render_fn
@@ -648,9 +731,12 @@ struct render_fn
         }
     };
 
+    static const inline std::string esc = "\033";
+    static const inline std::string csi = esc + "[";
+
     static void write_args(std::ostream& os, const std::vector<int>& args)
     {
-        os << "\033[";
+        os << csi;
         for (std::size_t i = 0; i < args.size(); ++i)
         {
             if (i != 0)
@@ -760,6 +846,54 @@ struct render_fn
             const font_style_t previous_style = m_ctx.style_stack.back();
             m_ctx.style_stack.pop_back();
             m_ctx.os << change_style(previous_style, m_ctx.style_stack.back());
+        }
+
+        void operator()(const op_move_cursor& v) const
+        {
+            switch (v.direction)
+            {
+                case direction_t::up: m_ctx.os << csi << v.value << "A"; break;
+                case direction_t::down: m_ctx.os << csi << v.value << "B"; break;
+                case direction_t::forward: m_ctx.os << csi << v.value << "C"; break;
+                case direction_t::backward: m_ctx.os << csi << v.value << "D"; break;
+                case direction_t::next_line: m_ctx.os << csi << v.value << "E"; break;
+                case direction_t::prev_line: m_ctx.os << csi << v.value << "F"; break;
+                case direction_t::column: m_ctx.os << csi << v.value << "G"; break;
+                default: break;
+            }
+        }
+
+        void operator()(const op_move_cursor_to& v) const
+        {
+            m_ctx.os << csi << v.row << ";" << v.column << "H";
+        }
+
+        void operator()(const op_clear_screen& v) const
+        {
+            switch (v.mode)
+            {
+                case clear_screen_mode_t::to_end: m_ctx.os << csi << "0J"; break;
+                case clear_screen_mode_t::to_begin: m_ctx.os << csi << "1J"; break;
+                case clear_screen_mode_t::full: m_ctx.os << csi << "2J"; break;
+                case clear_screen_mode_t::scrollback: m_ctx.os << csi << "3J"; break;
+                default: break;
+            }
+        }
+
+        void operator()(const op_clear_line& v) const
+        {
+            switch (v.mode)
+            {
+                case clear_line_mode_t::to_end: m_ctx.os << csi << "0K"; break;
+                case clear_line_mode_t::to_begin: m_ctx.os << csi << "1K"; break;
+                case clear_line_mode_t::full: m_ctx.os << csi << "2K"; break;
+                default: break;
+            }
+        }
+
+        void operator()(const op_set_cursor_visibility& v) const
+        {
+            m_ctx.os << csi << (v.value ? "?25h" : "?25l");
         }
 
         void handle_indent() const
