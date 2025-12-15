@@ -80,8 +80,6 @@ int main()
     const auto render_item
         = [&](int v) -> ansi::stream_t { return ansi::set_style(get_style(v))(ansi::line("* Item: ", v)); };
 
-    std::stringstream ss;
-
     ansi::stream_t stream;
     stream << ansi::clear_screen() << ansi::move_cursor_to();
 
@@ -92,7 +90,7 @@ int main()
                   green_style(ansi::line(":lines ", 100)),
                   ansi::indented(
                       ansi::line(quoted("This is an indented block.")),
-                      ansi::line("It has multiple lines."),
+                      ansi::line("It has multiple lines.", std::optional{ 1234 }, std::array{ 1, 2, 3 }),
                       underlined_text(ansi::indented(
                           ansi::line("This is a nested ", "indented", " block."), ansi::line("It is further indented."))),
                       ansi::line("Back to the first indented block."),
@@ -115,8 +113,12 @@ int main()
     }
 #endif
 
-    ansi::render(ss)(stream);
+    ansi::render(std::cout)(stream);
 
-    std::cout << ss.str() << std::flush;
+    for (const auto& op : stream.m_ops)
+    {
+        std::cout << op << "\n";
+    }
+
     return 0;
 }

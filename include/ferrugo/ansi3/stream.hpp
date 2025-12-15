@@ -3,9 +3,11 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -495,20 +497,14 @@ inline auto operator|(font_style_applier_t lhs, font_style_applier_t rhs) -> fon
     };
 }
 
-inline auto fg(color_t col) -> font_style_applier_t
-{
-    return [=](font_style_t& style) { style.foreground = col; };
-}
+constexpr inline auto fg
+    = [](color_t col) -> font_style_applier_t { return [=](font_style_t& style) { style.foreground = col; }; };
 
-inline auto bg(color_t col) -> font_style_applier_t
-{
-    return [=](font_style_t& style) { style.background = col; };
-}
+constexpr inline auto bg
+    = [](color_t col) -> font_style_applier_t { return [=](font_style_t& style) { style.background = col; }; };
 
-inline auto font(font_t font) -> font_style_applier_t
-{
-    return [=](font_style_t& style) { style.font |= font; };
-}
+constexpr inline auto font
+    = [](font_t font) -> font_style_applier_t { return [=](font_style_t& style) { style.font |= font; }; };
 
 enum class direction_t
 {
@@ -521,6 +517,25 @@ enum class direction_t
     column
 };
 
+inline std::ostream& operator<<(std::ostream& os, direction_t item)
+{
+#define CASE(v) \
+    case direction_t::v: return os << #v
+    switch (item)
+    {
+        CASE(up);
+        CASE(down);
+        CASE(forward);
+        CASE(backward);
+        CASE(next_line);
+        CASE(prev_line);
+        CASE(column);
+        default: throw std::runtime_error{ "unknown direction_t" };
+    }
+#undef CASE
+    return os;
+}
+
 enum class clear_screen_mode_t
 {
     full,
@@ -529,12 +544,43 @@ enum class clear_screen_mode_t
     scrollback
 };
 
+inline std::ostream& operator<<(std::ostream& os, clear_screen_mode_t item)
+{
+#define CASE(v) \
+    case clear_screen_mode_t::v: return os << #v
+    switch (item)
+    {
+        CASE(full);
+        CASE(to_end);
+        CASE(to_begin);
+        CASE(scrollback);
+        default: throw std::runtime_error{ "unknown clear_screen_mode_t" };
+    }
+#undef CASE
+    return os;
+}
+
 enum class clear_line_mode_t
 {
     full,
     to_end,
     to_begin
 };
+
+inline std::ostream& operator<<(std::ostream& os, clear_line_mode_t item)
+{
+#define CASE(v) \
+    case clear_line_mode_t::v: return os << #v
+    switch (item)
+    {
+        CASE(full);
+        CASE(to_end);
+        CASE(to_begin);
+        default: throw std::runtime_error{ "unknown clear_line_mode_t" };
+    }
+#undef CASE
+    return os;
+}
 
 struct op_new_line_t
 {
@@ -599,6 +645,71 @@ struct op_set_cursor_visibility
     bool value;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const op_new_line_t& item)
+{
+    return os << "{:new_line}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_indent_t& item)
+{
+    return os << "{:indent}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_unindent_t& item)
+{
+    return os << "{:unindent}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_text_t& item)
+{
+    return os << "{:text \"" << item.content << "\"}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_text_ref_t& item)
+{
+    return os << "{:text_ref \"" << item.content << "\"}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_push_style_t& item)
+{
+    return os << "{:push_style " << item.style << "}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_modify_style_t& item)
+{
+    return os << "{:modify_style <applier>}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_pop_style_t& item)
+{
+    return os << "{:pop_style}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_move_cursor& item)
+{
+    return os << "{:move_cursor " << item.direction << " " << item.value << "}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_move_cursor_to& item)
+{
+    return os << "{:move_cursor_to " << item.row << " " << item.column << "}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_clear_screen& item)
+{
+    return os << "{:clear_screen " << item.mode << "}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_clear_line& item)
+{
+    return os << "{:clear_line " << item.mode << "}";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const op_set_cursor_visibility& item)
+{
+    return os << "{:set_cursor_visibility " << (item.value ? "true" : "false") << "}";
+}
+
 using stream_op_t = std::variant<  //
     op_new_line_t,
     op_indent_t,
@@ -613,6 +724,15 @@ using stream_op_t = std::variant<  //
     op_clear_screen,
     op_clear_line,
     op_set_cursor_visibility>;
+
+inline std::ostream& operator<<(std::ostream& os, const stream_op_t& item)
+{
+    std::visit([&](const auto& v) { os << v; }, item);
+    return os;
+}
+
+template <class T, class = void>
+struct formatter_t;
 
 constexpr inline auto new_line = op_new_line_t{};
 
@@ -637,9 +757,6 @@ constexpr inline auto clear_screen
 constexpr inline auto clear_line = [](clear_line_mode_t mode = clear_line_mode_t::full) { return op_clear_line{ mode }; };
 
 constexpr inline auto set_cursor_visibility = [](bool value) { return op_set_cursor_visibility{ value }; };
-
-template <class T>
-struct formatter_t;
 
 struct stream_t
 {
@@ -1052,6 +1169,19 @@ struct tuple_formatter_t
     }
 };
 
+template <char... Fmt>
+struct sprintf_formatter_t
+{
+    template <class T>
+    void format(stream_t& stream, T item) const
+    {
+        static const char fmt[] = { '%', Fmt..., '\0' };
+        char buffer[64];
+        int chars_written = std::sprintf(buffer, fmt, item);
+        stream << text(std::string(buffer, chars_written));
+    }
+};
+
 template <class... Ts>
 struct formatter_t<std::tuple<Ts...>> : tuple_formatter_t
 {
@@ -1062,8 +1192,53 @@ struct formatter_t<std::pair<F, S>> : tuple_formatter_t
 {
 };
 
-template <class T>
-struct formatter_t : ostream_formatter_t
+// template <class T>
+// struct formatter_t<T, std::enable_if_t<std::is_arithmetic_v<T>>> : ostream_formatter_t
+// {
+// };
+
+template <>
+struct formatter_t<int> : sprintf_formatter_t<'d'>
+{
+};
+
+template <>
+struct formatter_t<long> : sprintf_formatter_t<'l', 'd'>
+{
+};
+
+template <>
+struct formatter_t<long long> : sprintf_formatter_t<'l', 'l', 'd'>
+{
+};
+
+template <>
+struct formatter_t<unsigned> : sprintf_formatter_t<'u'>
+{
+};
+
+template <>
+struct formatter_t<unsigned long> : sprintf_formatter_t<'l', 'u'>
+{
+};
+
+template <>
+struct formatter_t<unsigned long long> : sprintf_formatter_t<'l', 'l', 'u'>
+{
+};
+
+template <>
+struct formatter_t<float> : sprintf_formatter_t<'f'>
+{
+};
+
+template <>
+struct formatter_t<double> : sprintf_formatter_t<'f'>
+{
+};
+
+template <>
+struct formatter_t<long double> : sprintf_formatter_t<'L', 'f'>
 {
 };
 
@@ -1126,6 +1301,11 @@ struct formatter_t<std::vector<T>> : range_formatter_t
 {
 };
 
+template <class T, std::size_t N>
+struct formatter_t<std::array<T, N>> : range_formatter_t
+{
+};
+
 template <class T>
 struct formatter_t<std::reference_wrapper<T>>
 {
@@ -1150,6 +1330,22 @@ struct formatter_t<std::reference_wrapper<const std::string>>
     void format(stream_t& stream, std::reference_wrapper<const std::string> item) const
     {
         stream << text_ref(item.get());
+    }
+};
+
+template <class T>
+struct formatter_t<std::optional<T>>
+{
+    void format(stream_t& stream, const std::optional<T>& item) const
+    {
+        if (item)
+        {
+            stream << "{:some " << *item << "}";
+        }
+        else
+        {
+            stream << ":nil";
+        }
     }
 };
 
