@@ -1,124 +1,682 @@
+#include <algorithm>
 #include <ferrugo/ansi3/stream.hpp>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
+#include <numeric>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <vector>
 
-constexpr inline auto quoted = [](std::string_view text) -> ansi::stream_t
+struct stream_t
 {
-    return ansi::set_style({ ansi::bright_color_t{ ansi::basic_color_t::yellow }, {}, ansi::font_t::italic })(
-        ansi::line("\"", text, "\""));
+    struct state_t
+    {
+        bool at_line_start = true;
+        bool should_add_newline = false;
+        int current_line_indent = 0;
+    };
+
+    std::ostream& m_os;
+    std::vector<int> m_indent_levels = { 0 };
+    std::vector<int> m_tab_offsets = { 0 };
+    state_t m_state = {};
+
+    explicit stream_t(std::ostream& output) : m_os{ output }
+    {
+    }
+
+    void write_indent(const state_t& current_state) const
+    {
+        m_os << std::string(current_state.current_line_indent + m_tab_offsets.back(), ' ');
+    }
+
+    state_t handle_newline(state_t current_state) const
+    {
+        if (current_state.should_add_newline)
+        {
+            m_os << '\n';
+            current_state.at_line_start = true;
+            current_state.should_add_newline = false;
+            current_state.current_line_indent = m_indent_levels.back();
+        }
+        return current_state;
+    }
+
+    state_t write_char(char ch, state_t current_state) const
+    {
+        current_state = handle_newline(current_state);
+
+        if (current_state.at_line_start && ch != '\n')
+        {
+            current_state.current_line_indent = m_indent_levels.back();
+            write_indent(current_state);
+            current_state.at_line_start = false;
+        }
+
+        m_os.put(ch);
+        if (ch == '\n')
+        {
+            current_state.at_line_start = true;
+            current_state.current_line_indent = m_indent_levels.back();
+        }
+
+        return current_state;
+    }
+
+    void write(std::string_view text)
+    {
+        m_state = std::accumulate(
+            text.begin(),
+            text.end(),
+            m_state,
+            [this](state_t current_state, char ch) { return write_char(ch, current_state); });
+    }
+
+    void write_ansi(std::string_view ansi_code)
+    {
+        m_state = handle_newline(m_state);
+
+        if (m_state.at_line_start)
+        {
+            m_state.current_line_indent = m_indent_levels.back();
+            write_indent(m_state);
+            m_state.at_line_start = false;
+        }
+
+        m_os << ansi_code;
+    }
+
+    void newline()
+    {
+        m_state.should_add_newline = true;
+    }
+
+    void increase_indent(int spaces_per_level = 2)
+    {
+        m_indent_levels.push_back(m_indent_levels.back() + spaces_per_level);
+    }
+
+    void decrease_indent()
+    {
+        m_indent_levels.pop_back();
+    }
+
+    void tab(int spaces)
+    {
+        m_tab_offsets.push_back(m_tab_offsets.back() + spaces);
+    }
+
+    void untab()
+    {
+        m_tab_offsets.pop_back();
+    }
 };
+
+struct node_t
+{
+    struct impl_t
+    {
+        virtual ~impl_t() = default;
+        virtual void render(stream_t& is) const = 0;
+        virtual std::unique_ptr<impl_t> clone() const = 0;
+        virtual bool is_list_item() const = 0;
+    };
+
+    std::unique_ptr<impl_t> m_impl;
+
+    explicit node_t(std::unique_ptr<impl_t> impl) : m_impl(std::move(impl))
+    {
+    }
+
+    node_t(const node_t& other) : m_impl(other.m_impl->clone())
+    {
+    }
+
+    node_t(node_t&&) noexcept = default;
+
+    void render(stream_t& is) const
+    {
+        m_impl->render(is);
+    }
+
+    std::unique_ptr<node_t> clone() const
+    {
+        return std::make_unique<node_t>(m_impl->clone());
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const node_t& node)
+    {
+        stream_t is(os);
+        node.render(is);
+        return os;
+    }
+};
+
+struct text_node_t : node_t::impl_t
+{
+    std::string m_content;
+
+    explicit text_node_t(std::string content) : m_content(std::move(content))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        is.write(m_content);
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<text_node_t>(*this);
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+struct text_ref_node_t : node_t::impl_t
+{
+    std::string_view m_content;
+
+    explicit text_ref_node_t(std::string_view content) : m_content(std::move(content))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        is.write(m_content);
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<text_ref_node_t>(*this);
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+std::vector<std::unique_ptr<node_t::impl_t>> clone_all(const std::vector<std::unique_ptr<node_t::impl_t>>& nodes)
+{
+    std::vector<std::unique_ptr<node_t::impl_t>> result;
+    result.reserve(nodes.size());
+    for (const auto& child : nodes)
+    {
+        result.push_back(child->clone());
+    }
+    return result;
+};
+
+struct block_node_t : node_t::impl_t
+{
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit block_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        for (const auto& child : m_children)
+        {
+            child->render(is);
+        }
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<block_node_t>(clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+struct indented_node_t : node_t::impl_t
+{
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit indented_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        is.increase_indent();
+        for (const auto& child : m_children)
+        {
+            child->render(is);
+        }
+        is.decrease_indent();
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<indented_node_t>(clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+struct line_node_t : node_t::impl_t
+{
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit line_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        for (const auto& child : m_children)
+        {
+            child->render(is);
+        }
+        is.newline();
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<line_node_t>(clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+struct list_item_node_t : node_t::impl_t
+{
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit list_item_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        for (const auto& child : m_children)
+        {
+            child->render(is);
+        }
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<list_item_node_t>(clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return true;
+    }
+};
+
+struct list_node_t : node_t::impl_t
+{
+    std::string m_list_style;
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit list_node_t(std::string list_style, std::vector<std::unique_ptr<node_t::impl_t>> children)
+        : m_list_style(std::move(list_style))
+        , m_children(std::move(children))
+    {
+        if (!std::all_of(
+                m_children.begin(),
+                m_children.end(),
+                [](const std::unique_ptr<node_t::impl_t>& child) { return child->is_list_item(); }))
+        {
+            throw std::invalid_argument("All children of a list must be list items");
+        }
+    }
+
+    void render(stream_t& is) const override
+    {
+        for (std::size_t i = 0; i < m_children.size(); ++i)
+        {
+            if (i != 0)
+            {
+                is.newline();
+            }
+            std::string prefix = std::to_string(i + 1) + ". ";
+            is.write(prefix);
+            is.tab(prefix.length());
+            m_children[i]->render(is);
+            is.untab();
+        }
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<list_node_t>(m_list_style, clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+};
+
+struct styled_node_impl : node_t::impl_t
+{
+    std::string m_style_name;
+    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+
+    explicit styled_node_impl(std::string style_name, std::vector<std::unique_ptr<node_t::impl_t>> children)
+        : m_style_name(std::move(style_name))
+        , m_children(std::move(children))
+    {
+    }
+
+    void render(stream_t& is) const override
+    {
+        const std::string ansi_code = parse_ansi_codes(m_style_name);
+        if (!ansi_code.empty())
+        {
+            is.write_ansi(ansi_code);
+        }
+        for (const auto& child : m_children)
+        {
+            child->render(is);
+        }
+        if (!ansi_code.empty())
+        {
+            is.write_ansi("\033[0m");  // Reset all attributes
+        }
+    }
+
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<styled_node_impl>(m_style_name, clone_all(m_children));
+    }
+
+    bool is_list_item() const override
+    {
+        return false;
+    }
+
+    static std::string parse_ansi_codes(const std::string& style_name)
+    {
+        static const std::map<std::string, int> color_map = { { "black", 0 },         { "red", 1 },
+                                                              { "green", 2 },         { "yellow", 3 },
+                                                              { "blue", 4 },          { "magenta", 5 },
+                                                              { "cyan", 6 },          { "white", 7 },
+                                                              { "bright_black", 8 },  { "bright_red", 9 },
+                                                              { "bright_green", 10 }, { "bright_yellow", 11 },
+                                                              { "bright_blue", 12 },  { "bright_magenta", 13 },
+                                                              { "bright_cyan", 14 },  { "bright_white", 15 } };
+
+        static const std::map<std::string, std::string> style_map
+            = { { "bold", "1" },  { "dim", "2" },     { "italic", "3" }, { "underlined", "4" },
+                { "blink", "5" }, { "reverse", "7" }, { "hidden", "8" }, { "strikethrough", "9" } };
+
+        auto parse_color = [](const std::string& color_str) -> std::optional<int>
+        {
+            // Check for named colors
+            if (color_map.count(color_str))
+            {
+                return color_map.at(color_str);
+            }
+
+            // Check for RGB hex format: 0xRRGGBB
+            if (color_str.find("0x") == 0 && color_str.length() == 8)
+            {
+                try
+                {
+                    unsigned long hex_value = std::stoul(color_str.substr(2), nullptr, 16);
+                    int r = (hex_value >> 16) & 0xFF;
+                    int g = (hex_value >> 8) & 0xFF;
+                    int b = (hex_value >> 0) & 0xFF;
+
+                    // Convert RGB (0-255) to 6x6x6 cube indices (0-5)
+                    int r_idx = (r * 6) / 256;
+                    int g_idx = (g * 6) / 256;
+                    int b_idx = (b * 6) / 256;
+
+                    // Calculate 256-color palette index (16-231)
+                    return 16 + 36 * r_idx + 6 * g_idx + b_idx;
+                }
+                catch (...)
+                {
+                    return std::nullopt;
+                }
+            }
+
+            // Check for grayscale format: gray:N or grey:N where N is 0-23
+            if (color_str.find("gray:") == 0 || color_str.find("grey:") == 0)
+            {
+                try
+                {
+                    size_t colon_pos = color_str.find(':');
+                    int level = std::stoi(color_str.substr(colon_pos + 1));
+                    if (level >= 0 && level <= 23)
+                    {
+                        return 232 + level;  // Grayscale range: 232-255
+                    }
+                }
+                catch (...)
+                {
+                    return std::nullopt;
+                }
+            }
+
+            return std::nullopt;
+        };
+
+        std::vector<std::string> codes;
+
+        // Split by '+' to handle multiple styles like "fg:red+bg:white"
+        std::stringstream ss(style_name);
+        std::string token;
+
+        while (std::getline(ss, token, '+'))
+        {
+            if (token.find("fg:") == 0)
+            {
+                if (auto color_code = parse_color(token.substr(3)))
+                {
+                    codes.push_back("38");
+                    codes.push_back("5");
+                    codes.push_back(std::to_string(*color_code));
+                }
+            }
+            else if (token.find("bg:") == 0)
+            {
+                if (auto color_code = parse_color(token.substr(3)))
+                {
+                    codes.push_back("48");
+                    codes.push_back("5");
+                    codes.push_back(std::to_string(*color_code));
+                }
+            }
+            else if (style_map.count(token))
+            {
+                codes.push_back(style_map.at(token));
+            }
+            else
+            {
+                if (auto color_code = parse_color(token))
+                {
+                    codes.push_back("38");
+                    codes.push_back("5");
+                    codes.push_back(std::to_string(*color_code));
+                }
+            }
+        }
+
+        if (codes.empty())
+        {
+            return "";
+        }
+
+        std::string result = "\033[";
+        for (size_t i = 0; i < codes.size(); ++i)
+        {
+            if (i != 0)
+            {
+                result += ";";
+            }
+            result += codes[i];
+        }
+        result += "m";
+        return result;
+    }
+};
+
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const char* item)
+{
+    v.push_back(std::make_unique<text_ref_node_t>(item));
+}
+
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const node_t& item)
+{
+    v.push_back(item.m_impl->clone());
+}
+
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, node_t&& item)
+{
+    v.push_back(std::move(item.m_impl));
+}
+
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const std::vector<node_t>& item)
+{
+    for (const auto& child : item)
+    {
+        v.push_back(child.m_impl->clone());
+    }
+}
+
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, std::vector<node_t>&& item)
+{
+    for (auto& child : item)
+    {
+        v.push_back(std::move(child.m_impl));
+    }
+}
 
 template <class T>
-auto fmt(const T& value) -> ansi::stream_t
+void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, T&& value)
 {
-    if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> || std::is_same_v<T, const char*>)
+    std::ostringstream ss;
+    ss << value;
+    v.push_back(std::make_unique<text_node_t>(ss.str()));
+}
+
+template <class Head, class... Tail>
+void append(std::vector<std::unique_ptr<node_t::impl_t>>& v, Head&& head, Tail&&... tail)
+{
+    append_item(v, std::forward<Head>(head));
+    if constexpr (sizeof...(tail) > 0)
     {
-        return ansi::stream_t{} << "\"" << value << "\"";
-    }
-    else
-    {
-        return ansi::stream_t{} << value;
+        append(v, std::forward<Tail>(tail)...);
     }
 }
 
-template <class K, class V>
-auto fmt(const std::map<K, V>& m) -> ansi::stream_t
+template <class... Args>
+std::vector<std::unique_ptr<node_t::impl_t>> create(Args&&... args)
 {
-    ansi::stream_t stream;
-
-    stream << ansi::line("{");
-
-    stream << ansi::indent;
-
-    for (const auto& [key, value] : m)
-    {
-        stream << ansi::line(fmt(key), ": ", fmt(value));
-    }
-
-    stream << ansi::unindent;
-    stream << ansi::line("}");
-    return stream;
+    std::vector<std::unique_ptr<node_t::impl_t>> children;
+    children.reserve(sizeof...(args));
+    append(children, std::forward<Args>(args)...);
+    return children;
 }
 
-template <class... Ts>
-struct overloaded : Ts...
+struct styled_node_builder
 {
-    using Ts::operator()...;
+    std::string m_style_name;
+
+    explicit styled_node_builder(std::string style_name) : m_style_name(std::move(style_name))
+    {
+    }
+
+    template <class... Args>
+    node_t operator()(Args&&... args) const
+    {
+        return node_t{ std::make_unique<styled_node_impl>(m_style_name, create(std::forward<Args>(args)...)) };
+    }
 };
 
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
+template <class... Args>
+node_t indented(Args&&... args)
+{
+    return node_t{ std::make_unique<indented_node_t>(create(std::forward<Args>(args)...)) };
+};
+
+template <class... Args>
+node_t line(Args&&... args)
+{
+    return node_t{ std::make_unique<line_node_t>(create(std::forward<Args>(args)...)) };
+}
+
+template <class... Args>
+node_t list(Args&&... args)
+{
+    return node_t{ std::make_unique<list_node_t>("numbered", create(std::forward<Args>(args)...)) };
+}
+
+template <class... Args>
+node_t list_item(Args&&... args)
+{
+    return node_t{ std::make_unique<list_item_node_t>(create(std::forward<Args>(args)...)) };
+}
+
+template <class... Args>
+node_t block(Args&&... args)
+{
+    return node_t{ std::make_unique<block_node_t>(create(std::forward<Args>(args)...)) };
+}
+
+styled_node_builder styled(std::string style_name)
+{
+    return styled_node_builder{ std::move(style_name) };
+}
+
+node_t format(const std::map<std::string, std::string>& in)
+{
+    std::vector<node_t> items;
+    for (const auto& [k, v] : in)
+    {
+        items.push_back(line(styled("blue")(k), styled("bright_white")(": "), styled("bright_white")(v)));
+    }
+    return block(line("{"), indented(std::move(items)), line("}"));
+}
+
+node_t format(const std::map<std::string, std::map<std::string, std::string>>& in)
+{
+    std::vector<node_t> items;
+    for (const auto& [k, v] : in)
+    {
+        items.push_back(line(styled("blue")(k), styled("white")(": "), format(v)));
+    }
+    return block(line("{"), indented(std::move(items)), line("}"));
+}
 
 int main()
 {
-    const std::string name = "example.txt";
-    const auto braces = ansi::set_style(
-        { ansi::basic_color_t::blue, ansi::bright_color_t{ ansi::basic_color_t::yellow }, ansi::font_t::bold });
-    const auto underlined_text = ansi::set_style({ ansi::palette_color_t::from_grayscale(12), {}, ansi::font_t::underline });
-    const auto red_style = ansi::set_style(
-        { ansi::bright_color_t{ ansi::basic_color_t::white }, ansi::basic_color_t::red, ansi::font_t::underline });
-    const auto green_style = ansi::set_style({ ansi::basic_color_t::green, {}, ansi::font_t::bold });
-
-    const auto get_style = [](int v) -> ansi::font_style_t
-    {
-        if (v < 40)
-        {
-            return ansi::font_style_t{ ansi::bright_color_t{ ansi::basic_color_t::green }, {}, {} };
-        }
-        if (v > 80)
-        {
-            return ansi::font_style_t{ ansi::basic_color_t::red, {}, ansi::font_t::bold };
-        }
-        return ansi::font_style_t{};
-    };
-
-    const auto render_item
-        = [&](int v) -> ansi::stream_t { return ansi::set_style(get_style(v))(ansi::line("* Item: ", v)); };
-
-    ansi::stream_t stream;
-    stream << ansi::clear_screen() << ansi::move_cursor_to();
-
-    stream << braces(ansi::line("{"))
-           << ansi::indented(
-                  ansi::line(":file ", name),
-                  red_style(ansi::line(":size ", 12345)),
-                  green_style(ansi::line(":lines ", 100)),
-                  ansi::indented(
-                      ansi::line(quoted("This is an indented block.")),
-                      ansi::line("It has multiple lines.", std::optional{ 1234 }, std::array{ 1, 2, 3 }),
-                      underlined_text(ansi::indented(
-                          ansi::line("This is a nested ", "indented", " block."), ansi::line("It is further indented."))),
-                      ansi::line("Back to the first indented block."),
-                      ansi::line("Περιοίϰεον δέ σϕεας τὰ πολλὰ τῶν χώρων τοῦτον τὸν χρόνον")),
-                  ansi::line("End of file metadata."))
-           << braces(ansi::line("}"));
-
-#if 0
-    for (int r = 0; r < 6; ++r)
-    {
-        for (int g = 0; g < 6; ++g)
-        {
-            for (int b = 0; b < 6; ++b)
-            {
-                stream << ansi::set_style({ {}, ansi::palette_color_t::from_rgb(r, g, b), {} })(ansi::text("  "));
-            }
-            stream << ansi::text(" ");
-        }
-        stream << ansi::new_line;
-    }
-#endif
-
-    ansi::render(std::cout)(stream);
-
-    for (const auto& op : stream.m_ops)
-    {
-        std::cout << op << "\n";
-    }
-
+    std::string g = "World";
+    std::cout << format(std::map<std::string, std::map<std::string, std::string>>{
+        { "Z", { { "a", "B" }, { "c", "D" }, { "e", "F" } } }, { "x", { { "a", "B" }, { "c", "D" }, { "e", "F" } } } })
+              << std::endl;
+    node_t node = indented(styled("green")(list(
+        list_item(styled("yellow")("Item 1")),
+        list_item(styled("bold")("Item 2")),
+        list_item(styled("green")(list(list_item("Subitem 1"), list_item("Subitem 2")))),
+        list_item("Item 3"))));
+    std::cout << node << std::endl;
     return 0;
 }
