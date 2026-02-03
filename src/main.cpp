@@ -139,14 +139,26 @@ struct node_t
 
     node_t(node_t&&) noexcept = default;
 
-    void render(stream_t& is) const
+    node_t& operator=(const node_t& other)
     {
-        m_impl->render(is);
+        if (this != &other)
+        {
+            m_impl = other.m_impl->clone();
+        }
+        return *this;
     }
 
-    std::unique_ptr<node_t> clone() const
+    node_t& operator=(node_t&&) noexcept = default;
+
+    stream_t& render(stream_t& is) const
     {
-        return std::make_unique<node_t>(m_impl->clone());
+        m_impl->render(is);
+        return is;
+    }
+
+    bool is_list_item() const
+    {
+        return m_impl->is_list_item();
     }
 
     friend std::ostream& operator<<(std::ostream& os, const node_t& node)
@@ -157,7 +169,21 @@ struct node_t
     }
 };
 
-struct text_node_t : node_t::impl_t
+template <class Self, bool IsListItem = false>
+struct node_base_t : node_t::impl_t
+{
+    std::unique_ptr<node_t::impl_t> clone() const override
+    {
+        return std::make_unique<Self>(static_cast<const Self&>(*this));
+    }
+
+    bool is_list_item() const override
+    {
+        return IsListItem;
+    }
+};
+
+struct text_node_t : node_base_t<text_node_t>
 {
     std::string m_content;
 
@@ -169,19 +195,9 @@ struct text_node_t : node_t::impl_t
     {
         is.write(m_content);
     }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<text_node_t>(*this);
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
-    }
 };
 
-struct text_ref_node_t : node_t::impl_t
+struct text_ref_node_t : node_base_t<text_ref_node_t>
 {
     std::string_view m_content;
 
@@ -193,34 +209,13 @@ struct text_ref_node_t : node_t::impl_t
     {
         is.write(m_content);
     }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<text_ref_node_t>(*this);
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
-    }
 };
 
-std::vector<std::unique_ptr<node_t::impl_t>> clone_all(const std::vector<std::unique_ptr<node_t::impl_t>>& nodes)
+struct block_node_t : node_base_t<block_node_t>
 {
-    std::vector<std::unique_ptr<node_t::impl_t>> result;
-    result.reserve(nodes.size());
-    for (const auto& child : nodes)
-    {
-        result.push_back(child->clone());
-    }
-    return result;
-};
+    std::vector<node_t> m_children;
 
-struct block_node_t : node_t::impl_t
-{
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
-
-    explicit block_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    explicit block_node_t(std::vector<node_t> children) : m_children(std::move(children))
     {
     }
 
@@ -228,26 +223,16 @@ struct block_node_t : node_t::impl_t
     {
         for (const auto& child : m_children)
         {
-            child->render(is);
+            child.render(is);
         }
-    }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<block_node_t>(clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
     }
 };
 
-struct indented_node_t : node_t::impl_t
+struct indented_node_t : node_base_t<indented_node_t>
 {
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+    std::vector<node_t> m_children;
 
-    explicit indented_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    explicit indented_node_t(std::vector<node_t> children) : m_children(std::move(children))
     {
     }
 
@@ -256,27 +241,17 @@ struct indented_node_t : node_t::impl_t
         is.increase_indent();
         for (const auto& child : m_children)
         {
-            child->render(is);
+            child.render(is);
         }
         is.decrease_indent();
     }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<indented_node_t>(clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
-    }
 };
 
-struct line_node_t : node_t::impl_t
+struct line_node_t : node_base_t<line_node_t>
 {
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+    std::vector<node_t> m_children;
 
-    explicit line_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    explicit line_node_t(std::vector<node_t> children) : m_children(std::move(children))
     {
     }
 
@@ -284,27 +259,17 @@ struct line_node_t : node_t::impl_t
     {
         for (const auto& child : m_children)
         {
-            child->render(is);
+            child.render(is);
         }
         is.newline();
     }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<line_node_t>(clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
-    }
 };
 
-struct list_item_node_t : node_t::impl_t
+struct list_item_node_t : node_base_t<list_item_node_t, true>
 {
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+    std::vector<node_t> m_children;
 
-    explicit list_item_node_t(std::vector<std::unique_ptr<node_t::impl_t>> children) : m_children(std::move(children))
+    explicit list_item_node_t(std::vector<node_t> children) : m_children(std::move(children))
     {
     }
 
@@ -312,34 +277,21 @@ struct list_item_node_t : node_t::impl_t
     {
         for (const auto& child : m_children)
         {
-            child->render(is);
+            child.render(is);
         }
-    }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<list_item_node_t>(clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return true;
     }
 };
 
-struct list_node_t : node_t::impl_t
+struct list_node_t : node_base_t<list_node_t>
 {
     std::string m_list_style;
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+    std::vector<node_t> m_children;
 
-    explicit list_node_t(std::string list_style, std::vector<std::unique_ptr<node_t::impl_t>> children)
+    explicit list_node_t(std::string list_style, std::vector<node_t> children)
         : m_list_style(std::move(list_style))
         , m_children(std::move(children))
     {
-        if (!std::all_of(
-                m_children.begin(),
-                m_children.end(),
-                [](const std::unique_ptr<node_t::impl_t>& child) { return child->is_list_item(); }))
+        if (!std::all_of(m_children.begin(), m_children.end(), std::mem_fn(&node_t::is_list_item)))
         {
             throw std::invalid_argument("All children of a list must be list items");
         }
@@ -356,28 +308,18 @@ struct list_node_t : node_t::impl_t
             std::string prefix = std::to_string(i + 1) + ". ";
             is.write(prefix);
             is.tab(prefix.length());
-            m_children[i]->render(is);
+            m_children[i].render(is);
             is.untab();
         }
     }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<list_node_t>(m_list_style, clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
-    }
 };
 
-struct styled_node_impl : node_t::impl_t
+struct styled_node_impl : node_base_t<styled_node_impl>
 {
     std::string m_style_name;
-    std::vector<std::unique_ptr<node_t::impl_t>> m_children;
+    std::vector<node_t> m_children;
 
-    explicit styled_node_impl(std::string style_name, std::vector<std::unique_ptr<node_t::impl_t>> children)
+    explicit styled_node_impl(std::string style_name, std::vector<node_t> children)
         : m_style_name(std::move(style_name))
         , m_children(std::move(children))
     {
@@ -392,22 +334,12 @@ struct styled_node_impl : node_t::impl_t
         }
         for (const auto& child : m_children)
         {
-            child->render(is);
+            child.render(is);
         }
         if (!ansi_code.empty())
         {
             is.write_ansi("\033[0m");  // Reset all attributes
         }
-    }
-
-    std::unique_ptr<node_t::impl_t> clone() const override
-    {
-        return std::make_unique<styled_node_impl>(m_style_name, clone_all(m_children));
-    }
-
-    bool is_list_item() const override
-    {
-        return false;
     }
 
     static std::string parse_ansi_codes(const std::string& style_name)
@@ -538,63 +470,68 @@ struct styled_node_impl : node_t::impl_t
     }
 };
 
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const char* item)
+template <class Impl, class... Args>
+node_t make_node(Args&&... args)
 {
-    v.push_back(std::make_unique<text_ref_node_t>(item));
+    return node_t{ std::make_unique<Impl>(std::forward<Args>(args)...) };
 }
 
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const node_t& item)
+struct create_fn
 {
-    v.push_back(item.m_impl->clone());
-}
-
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, node_t&& item)
-{
-    v.push_back(std::move(item.m_impl));
-}
-
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, const std::vector<node_t>& item)
-{
-    for (const auto& child : item)
+    template <class... Args>
+    std::vector<node_t> operator()(Args&&... args) const
     {
-        v.push_back(child.m_impl->clone());
+        std::vector<node_t> children = {};
+        children.reserve(sizeof...(args));
+        append(children, std::forward<Args>(args)...);
+        return children;
     }
-}
 
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, std::vector<node_t>&& item)
-{
-    for (auto& child : item)
+    template <class Head, class... Tail>
+    static void append(std::vector<node_t>& v, Head&& head, Tail&&... tail)
     {
-        v.push_back(std::move(child.m_impl));
+        append_item(v, std::forward<Head>(head));
+        if constexpr (sizeof...(tail) > 0)
+        {
+            append(v, std::forward<Tail>(tail)...);
+        }
     }
-}
 
-template <class T>
-void append_item(std::vector<std::unique_ptr<node_t::impl_t>>& v, T&& value)
-{
-    std::ostringstream ss;
-    ss << value;
-    v.push_back(std::make_unique<text_node_t>(ss.str()));
-}
-
-template <class Head, class... Tail>
-void append(std::vector<std::unique_ptr<node_t::impl_t>>& v, Head&& head, Tail&&... tail)
-{
-    append_item(v, std::forward<Head>(head));
-    if constexpr (sizeof...(tail) > 0)
+    static void append_item(std::vector<node_t>& v, const char* item)
     {
-        append(v, std::forward<Tail>(tail)...);
+        v.push_back(make_node<text_ref_node_t>(item));
     }
-}
 
-template <class... Args>
-std::vector<std::unique_ptr<node_t::impl_t>> create(Args&&... args)
-{
-    std::vector<std::unique_ptr<node_t::impl_t>> children;
-    children.reserve(sizeof...(args));
-    append(children, std::forward<Args>(args)...);
-    return children;
-}
+    static void append_item(std::vector<node_t>& v, const node_t& item)
+    {
+        v.push_back(item);
+    }
+
+    static void append_item(std::vector<node_t>& v, node_t&& item)
+    {
+        v.push_back(std::move(item));
+    }
+
+    static void append_item(std::vector<node_t>& v, const std::vector<node_t>& item)
+    {
+        v.insert(v.end(), item.begin(), item.end());
+    }
+
+    static void append_item(std::vector<node_t>& v, std::vector<node_t>&& item)
+    {
+        v.insert(v.end(), std::make_move_iterator(item.begin()), std::make_move_iterator(item.end()));
+    }
+
+    template <class T>
+    static void append_item(std::vector<node_t>& v, T&& value)
+    {
+        std::ostringstream ss;
+        ss << value;
+        v.push_back(make_node<text_node_t>(ss.str()));
+    }
+};
+
+static constexpr auto create = create_fn{};
 
 struct styled_node_builder
 {
@@ -607,38 +544,38 @@ struct styled_node_builder
     template <class... Args>
     node_t operator()(Args&&... args) const
     {
-        return node_t{ std::make_unique<styled_node_impl>(m_style_name, create(std::forward<Args>(args)...)) };
+        return make_node<styled_node_impl>(m_style_name, create(std::forward<Args>(args)...));
     }
 };
 
 template <class... Args>
 node_t indented(Args&&... args)
 {
-    return node_t{ std::make_unique<indented_node_t>(create(std::forward<Args>(args)...)) };
+    return make_node<indented_node_t>(create(std::forward<Args>(args)...));
 };
 
 template <class... Args>
 node_t line(Args&&... args)
 {
-    return node_t{ std::make_unique<line_node_t>(create(std::forward<Args>(args)...)) };
+    return make_node<line_node_t>(create(std::forward<Args>(args)...));
 }
 
 template <class... Args>
 node_t list(Args&&... args)
 {
-    return node_t{ std::make_unique<list_node_t>("numbered", create(std::forward<Args>(args)...)) };
+    return make_node<list_node_t>("numbered", create(std::forward<Args>(args)...));
 }
 
 template <class... Args>
 node_t list_item(Args&&... args)
 {
-    return node_t{ std::make_unique<list_item_node_t>(create(std::forward<Args>(args)...)) };
+    return make_node<list_item_node_t>(create(std::forward<Args>(args)...));
 }
 
 template <class... Args>
 node_t block(Args&&... args)
 {
-    return node_t{ std::make_unique<block_node_t>(create(std::forward<Args>(args)...)) };
+    return make_node<block_node_t>(create(std::forward<Args>(args)...));
 }
 
 styled_node_builder styled(std::string style_name)
@@ -675,7 +612,7 @@ int main()
     node_t node = indented(styled("green")(list(
         list_item(styled("yellow")("Item 1")),
         list_item(styled("bold")("Item 2")),
-        list_item(styled("green")(list(list_item("Subitem 1"), list_item("Subitem 2")))),
+        list_item(styled("red")(list(list_item("Subitem 1"), list_item("Subitem 2")))),
         list_item("Item 3"))));
     std::cout << node << std::endl;
     return 0;
